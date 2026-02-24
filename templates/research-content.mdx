@@ -1,0 +1,282 @@
+---
+title: "Research & Content Templates"
+description: "6 templates for research and content creation agents."
+---
+
+# Research & Content Templates
+
+Six templates for research and content creation workflows. These agents do most of their work reading and analyzing — with carefully scoped write permissions for drafting and scheduling.
+
+---
+
+## 1. Web Research Agent
+
+**Use case:** An AI that browses the web to gather information, reads pages, and synthesizes research — with a configurable domain allowlist and no ability to write or publish externally.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `read_only` | `true` | Research only, no posting |
+| `action_allowlist` | `web:search, web:read, web:fetch` | Web access only |
+| `domain_allowlist` | _(configurable — see below)_ | Scope to relevant sources |
+| `no_pii_export` | `true` | No personal data in outputs |
+
+```json
+{
+  "template": "web-research-agent",
+  "constraints": {
+    "read_only": true,
+    "action_allowlist": [
+      "web:search",
+      "web:read",
+      "web:fetch",
+      "web:screenshot"
+    ],
+    "action_blocklist": [
+      "web:post",
+      "web:submit_form",
+      "web:login",
+      "email:send"
+    ],
+    "no_pii_export": true,
+    "max_per_minute": 10,
+    "max_per_hour": 200
+  }
+}
+```
+
+**Recommended domain allowlists by research type:**
+
+| Research Type | Recommended Domains |
+|--------------|-------------------|
+| Academic | `arxiv.org,pubmed.ncbi.nlm.nih.gov,scholar.google.com,semanticscholar.org` |
+| News | `reuters.com,apnews.com,bbc.com,wsj.com,ft.com` |
+| Tech | `github.com,stackoverflow.com,docs.*.com,developer.*.com` |
+| Business | `crunchbase.com,pitchbook.com,sec.gov,bloomberg.com` |
+
+---
+
+## 2. Content Writer
+
+**Use case:** An AI that drafts blog posts, articles, and copy — saving drafts to your CMS without publishing. All publishing requires a human to click the publish button.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `action_allowlist` | `cms:read, cms:draft, cms:update_draft` | Drafts only |
+| `action_blocklist` | `cms:publish, cms:schedule_publish, social:post` | No autonomous publishing |
+| `domain_allowlist` | Research sources + CMS only | Scoped web access |
+
+```json
+{
+  "template": "content-writer",
+  "constraints": {
+    "action_allowlist": [
+      "web:search",
+      "web:read",
+      "cms:read",
+      "cms:create_draft",
+      "cms:update_draft",
+      "files:read",
+      "files:create"
+    ],
+    "action_blocklist": [
+      "cms:publish",
+      "cms:schedule_publish",
+      "social:post",
+      "social:schedule",
+      "email:send_newsletter"
+    ],
+    "max_per_hour": 20,
+    "no_pii_export": true,
+    "read_only": false
+  }
+}
+```
+
+---
+
+## 3. Social Media Manager
+
+**Use case:** An AI that schedules social media posts, reads analytics, and manages a content calendar — with a daily post limit and no ability to delete historical posts.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `action_allowlist` | `social:post, social:schedule, social:read_analytics` | Scheduled posts + analytics |
+| `action_blocklist` | `social:delete, social:bulk_delete, social:dm` | No deletion or DMs |
+| `max_per_day` | `10 posts` | Prevent post flooding |
+
+```json
+{
+  "template": "social-media-manager",
+  "constraints": {
+    "action_allowlist": [
+      "social:post",
+      "social:schedule",
+      "social:read_analytics",
+      "social:read_comments",
+      "social:reply_comment",
+      "social:read_mentions"
+    ],
+    "action_blocklist": [
+      "social:delete_post",
+      "social:bulk_delete",
+      "social:dm",
+      "social:follow",
+      "social:unfollow",
+      "social:block"
+    ],
+    "max_per_hour": 5,
+    "max_per_day": "$0",
+    "required": "brand_account_id",
+    "no_pii_export": true
+  }
+}
+```
+
+<Tip>
+  The rate limit of 5 posts per hour enforces natural-feeling posting cadence. Adjust `max_per_hour` based on your platform's API rate limits and your audience's tolerance for post frequency.
+</Tip>
+
+---
+
+## 4. Data Analyst
+
+**Use case:** An AI that reads datasets, runs analyses, and produces summary outputs — without exporting raw data or PII. All output is aggregated or anonymized before delivery.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `read_only` | `true` for source data | No data modification |
+| `no_pii_export` | `true` | No individual-level data export |
+| `action_blocklist` | `data:export_raw, data:download_all` | No bulk exports |
+| `required` | `analysis_request_id` | Audit trail per analysis |
+
+```json
+{
+  "template": "data-analyst",
+  "constraints": {
+    "read_only": true,
+    "action_allowlist": [
+      "data:read",
+      "data:query",
+      "data:aggregate",
+      "reports:create",
+      "charts:create",
+      "data:sample"
+    ],
+    "action_blocklist": [
+      "data:export_raw",
+      "data:download_all",
+      "data:delete",
+      "data:modify",
+      "pii:read"
+    ],
+    "no_pii_export": true,
+    "required": "analysis_request_id",
+    "max_per_hour": 20
+  }
+}
+```
+
+---
+
+## 5. Market Research Agent
+
+**Use case:** An AI that researches competitors and market trends using public web sources — strictly read-only public information, no access to internal competitive intelligence systems.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `read_only` | `true` | Analysis only |
+| `action_allowlist` | `web:search, web:read` | Public web only |
+| `domain_blocklist` | Internal systems | No access to internal data |
+| `no_pii_export` | `true` | Privacy protection |
+
+```json
+{
+  "template": "market-research-agent",
+  "constraints": {
+    "read_only": true,
+    "action_allowlist": [
+      "web:search",
+      "web:read",
+      "web:fetch",
+      "reports:create"
+    ],
+    "action_blocklist": [
+      "web:login",
+      "web:post",
+      "internal:read",
+      "crm:read",
+      "data:read_internal"
+    ],
+    "domain_blocklist": "internal.mycompany.com,admin.mycompany.com",
+    "no_pii_export": true,
+    "max_per_minute": 5,
+    "max_per_hour": 100
+  }
+}
+```
+
+---
+
+## 6. Competitive Intelligence Agent
+
+**Use case:** An AI that gathers competitive intelligence from public web sources — strictly public web only, no logging into competitor systems, no accessing paywalled content without authorization.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `read_only` | `true` | Public info only |
+| `action_blocklist` | `web:login, web:create_account, web:bypass_paywall` | Hard blocks |
+| `domain_blocklist` | Internal systems + auth endpoints | No sensitive access |
+
+```json
+{
+  "template": "competitive-intelligence-agent",
+  "constraints": {
+    "read_only": true,
+    "action_allowlist": [
+      "web:search",
+      "web:read_public",
+      "web:fetch",
+      "web:read_rss",
+      "reports:create"
+    ],
+    "action_blocklist": [
+      "web:login",
+      "web:create_account",
+      "web:submit_form",
+      "web:bypass_paywall",
+      "web:scrape_authenticated"
+    ],
+    "no_pii_export": true,
+    "max_per_minute": 5,
+    "max_per_hour": 100,
+    "max_per_day": "$5.00"
+  }
+}
+```
+
+<Warning>
+  Competitive intelligence gathering must comply with the target website's terms of service, robots.txt, and applicable law. Supravisor enforces what you configure — you're responsible for configuring legal boundaries.
+</Warning>
+
+---
+
+## Applying Research & Content Templates
+
+```bash
+# Apply Web Research Agent template
+curl -X POST https://uniplex.ai/api/gates \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Research Gate",
+    "profile": "L2",
+    "trusted_issuers": ["issuer:mycompany.ai"],
+    "template": "web-research-agent"
+  }'
+```
+
+---
+
+<Card title="Browse All Templates" href="/templates/overview" icon="grid">
+  Back to the full template overview with all 30 profiles.
+</Card>

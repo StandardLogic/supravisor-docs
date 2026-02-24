@@ -1,0 +1,122 @@
+# Supravisor
+> Supravisor is the trust layer for AI agents, powered by the open Uniplex protocol.
+
+Supravisor gives every AI agent a cryptographic identity (Passport), defines enforcement rules for what it can do (Gates + Guardrails), and produces a signed, immutable record of every decision (Attestations). It's the infrastructure layer that makes AI agents safe to deploy at scale — locally or in production, with zero network latency for authorization decisions.
+
+## Docs
+
+- https://docs.uniplex.ai/for-humans — Plain-English guide, no code required
+- https://docs.uniplex.ai/concepts/issuers — Passport-signing authorities
+- https://docs.uniplex.ai/concepts/passports — Agent credentials (Ed25519 signed)
+- https://docs.uniplex.ai/concepts/gates — Local enforcement checkpoints
+- https://docs.uniplex.ai/concepts/guardrails — 17 constraint evaluators
+- https://docs.uniplex.ai/concepts/trust-profiles — L1/L2/L3 security levels
+- https://docs.uniplex.ai/concepts/attestations — Cryptographic proof records
+- https://docs.uniplex.ai/guides/protect-claude — Claude and Claude Code integration
+- https://docs.uniplex.ai/guides/protect-openai — OpenAI Agents SDK integration
+- https://docs.uniplex.ai/guides/mcp-server — 21 MCP tools for AI client management
+- https://docs.uniplex.ai/guides/agent-autonomy — Autonomous agent credential management
+- https://docs.uniplex.ai/guides/custom-constraints — Building custom guardrails
+- https://docs.uniplex.ai/guides/audit-trail — Reading and sharing audit records
+- https://docs.uniplex.ai/sdk/python — Python SDK reference
+- https://docs.uniplex.ai/sdk/typescript — TypeScript/Node.js SDK reference
+- https://docs.uniplex.ai/templates/overview — 30 ready-to-use agent profiles
+- https://docs.uniplex.ai/api-reference/authentication — API keys and scopes
+- https://docs.uniplex.ai/api-reference/passports — Passports REST API
+- https://docs.uniplex.ai/api-reference/gates — Gates REST API
+- https://docs.uniplex.ai/api-reference/guardrails — Guardrails REST API
+- https://docs.uniplex.ai/api-reference/audit-trail — Audit Trail REST API
+
+## Key Facts
+
+- **Passports** are Ed25519-signed JSON credentials carrying agent_id, permissions, issuer_id, public_key, and expiry
+- **Passport ID format**: `uni_xxxxxxxx` (64 hex chars after prefix)
+- **Gates** verify passports locally — no network call, sub-millisecond — then evaluate guardrail constraints
+- **17 constraint evaluators** cover: spending caps (per-action, per-day, cumulative), rate limits (per-minute, per-hour), domain allowlist/blocklist, action allowlist/blocklist, read_only mode, PII export protection, required fields, model enforcement, and SLA tracking
+- **Trust Profiles**: L1 (self-issued, dev), L2 (managed issuer, nonce replay protection, production), L3 (proof-of-possession, live revocation, high-stakes)
+- **Attestations** are Ed25519-signed by the gate's private key — immutable, independently verifiable, tamper-proof
+- **Issuer format**: `issuer:yourdomain.ai` — acts like a certificate authority for agents
+- **Private keys** are generated client-side in the browser and never stored by Supravisor
+- **Revocation** is instant — gates reject revoked passports immediately (L2: cached; L3: live check)
+- **MCP server** provides 21 tools via Streamable HTTP transport with OAuth 2.0 PKCE authentication
+- **API base URL**: `https://uniplex.ai/api`
+- **API key format**: `uni_xxxx` — used as Bearer token in Authorization header
+- **30 constraint templates** across 5 categories: Personal Productivity, Business Operations, Developer Tools, Finance & Commerce, Research & Content
+- **Permission namespaces**: `mcp:*`, `web:*`, `email:*`, `files:*`, `payments:*`, `api:*`, `tools:*`, `*`
+- The **UNIPLEX_PASSPORT_KEY** environment variable stores the agent's private key
+- Agents can operate fully autonomously after a one-time human bootstrap
+
+## SDK
+
+```bash
+# Python
+pip install uniplex
+
+# TypeScript / Node.js
+npm install uniplex
+```
+
+**Python quick start:**
+```python
+from uniplex import Agent, Gate, TrustProfile
+agent = Agent.from_env()          # reads UNIPLEX_PASSPORT_KEY
+gate = Gate(profile=TrustProfile.L2, trusted_issuers=["issuer:mycompany.ai"])
+decision = gate.authorize(agent.generate_token(), "web:search")
+print(decision.allowed, decision.reason, decision.attestation_id)
+```
+
+**TypeScript quick start:**
+```typescript
+import { Agent, Gate, TrustProfile } from 'uniplex';
+const agent = await Agent.fromEnv();
+const gate = new Gate({ profile: TrustProfile.L2, trustedIssuers: ['issuer:mycompany.ai'] });
+const decision = await gate.authorize(agent.generateToken(), 'web:search');
+console.log(decision.allowed, decision.reason, decision.attestationId);
+```
+
+**Self-issued (no account needed):**
+```python
+from uniplex import Agent
+agent = Agent.create("my-agent", permissions=["mcp:*", "web:search"])
+decision = agent.authorize("mcp:search")
+```
+
+## MCP Server
+
+```bash
+npx uniplex-mcp-manage
+```
+
+21 tools: create_issuer, list_issuers, get_issuer, update_issuer, revoke_issuer, issue_passport, list_passports, get_passport, revoke_passport, create_gate, list_gates, get_gate, update_gate, delete_gate, check_authorization, verify_passport, list_attestations, get_attestation, export_attestations, list_templates, apply_template
+
+OAuth 2.0 PKCE authentication. Add to Claude Desktop or Claude Code via MCP config.
+
+## API
+
+**Base URL:** `https://uniplex.ai/api`
+
+**Authentication:** `Authorization: Bearer uni_xxxx`
+
+**Key endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /api/authorize | Check if a passport is authorized for an action |
+| POST | /api/passports | Issue a new passport |
+| GET | /api/passports | List passports |
+| DELETE | /api/passports/:id | Revoke a passport |
+| POST | /api/issuers | Create an issuer |
+| GET | /api/issuers | List issuers |
+| POST | /api/gates | Create a gate |
+| GET | /api/gates | List gates |
+| PUT | /api/gates/:id | Update gate constraints |
+| GET | /api/audit-trail | List attestations with filters |
+| GET | /api/audit-trail/:id | Get single attestation |
+| POST | /api/audit-trail/:id/share | Create public share link |
+| GET | /api/audit-trail/export | Export as JSON or CSV |
+
+**Rate limits:** 100/min (authorization), 30/min (passport creation), 10/min (gate creation)
+
+**Error format:** `{"error": "message", "code": "ERROR_CODE"}`
+
+**Common error codes:** UNAUTHORIZED, FORBIDDEN, PASSPORT_EXPIRED, PASSPORT_REVOKED, ISSUER_NOT_TRUSTED, PERMISSION_DENIED, CONSTRAINT_VIOLATION, SIGNATURE_INVALID

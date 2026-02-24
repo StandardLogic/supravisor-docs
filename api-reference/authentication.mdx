@@ -1,0 +1,190 @@
+---
+title: "Authentication"
+description: "API keys, scopes, and making authenticated requests."
+---
+
+# Authentication
+
+The Supravisor API uses **Bearer token authentication** with API keys in the format `uni_xxxxxxxx`.
+
+---
+
+## API Key Format
+
+```
+uni_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+- Prefix: `uni_`
+- Followed by 64 lowercase hexadecimal characters
+- Total length: 68 characters
+
+---
+
+## Making Authenticated Requests
+
+Include your API key in every request as a Bearer token:
+
+```bash
+curl https://uniplex.ai/api/issuers \
+  -H "Authorization: Bearer uni_xxxx"
+```
+
+```python
+import requests
+
+headers = {"Authorization": "Bearer uni_xxxx"}
+response = requests.get("https://uniplex.ai/api/issuers", headers=headers)
+```
+
+```typescript
+const response = await fetch('https://uniplex.ai/api/issuers', {
+  headers: { Authorization: 'Bearer uni_xxxx' },
+});
+```
+
+---
+
+## Creating an API Key
+
+1. Log into the Supravisor dashboard at [uniplex.ai](https://uniplex.ai)
+2. Click **API Keys** in the left sidebar
+3. Click **+ New API Key**
+4. Give it a name (e.g., "Production Server", "CI/CD Pipeline")
+5. Select the scopes you need (see table below)
+6. Click **Create**
+
+The key is shown **once**. Copy it immediately and store it in your secrets manager.
+
+---
+
+## Scopes
+
+API keys have granular scopes. Grant only what your use case requires.
+
+| Scope | Description |
+|-------|-------------|
+| `gates:create` | Create new gates |
+| `gates:read` | List and retrieve gate configurations |
+| `gates:update` | Update gate configuration and constraints |
+| `gates:delete` | Delete gates |
+| `gates:manage` | Full gate management (create + read + update + delete) |
+| `passports:issue` | Issue new passports for agents |
+| `passports:read` | List and retrieve passport details |
+| `passports:revoke` | Revoke passports |
+| `issuers:create` | Create new issuers |
+| `issuers:read` | List and retrieve issuer details |
+| `issuers:update` | Update issuer name and description |
+| `guardrails:create` | Create new guardrail configurations |
+| `guardrails:read` | Read guardrail configurations |
+| `guardrails:update` | Update guardrail configurations |
+| `templates:create` | Create custom constraint templates |
+| `templates:read` | List and apply templates |
+| `templates:update` | Update template configurations |
+| `osgate:read` | Read OS Gate session data |
+| `osgate:write` | Write OS Gate session data |
+| `osgate:manage` | Full OS Gate management |
+| `audit:read` | Read audit trail and attestations |
+| `audit:export` | Export attestations as JSON or CSV |
+| `audit:share` | Create public share links for attestations |
+| `admin:*` | Full administrative access (use sparingly) |
+
+**Common scope combinations:**
+
+| Use Case | Recommended Scopes |
+|----------|-------------------|
+| Read-only monitoring | `passports:read, gates:read, audit:read` |
+| Autonomous agent (issue own passports) | `passports:issue, passports:revoke, audit:read` |
+| Full management | `gates:manage, passports:issue, passports:read, passports:revoke, issuers:read, audit:read, audit:export` |
+| CI/CD pipeline | `passports:issue, passports:revoke, gates:read` |
+
+---
+
+## Base URL
+
+```
+https://uniplex.ai/api
+```
+
+All endpoints are relative to this base URL.
+
+---
+
+## Rate Limits
+
+| Endpoint Category | Limit |
+|------------------|-------|
+| Authorization checks (`POST /api/authorize`) | 100 requests/minute |
+| Passport creation (`POST /api/passports`) | 30 requests/minute |
+| Gate creation (`POST /api/gates`) | 10 requests/minute |
+| Audit trail reads | 60 requests/minute |
+| All other endpoints | 60 requests/minute |
+
+Rate limit headers are returned on every response:
+
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 87
+X-RateLimit-Reset: 1708789200
+```
+
+When rate limited, the API returns `429 Too Many Requests` with a `Retry-After` header.
+
+---
+
+## Error Format
+
+All errors return a JSON object:
+
+```json
+{
+  "error": "Human-readable error message",
+  "code": "ERROR_CODE",
+  "details": {}
+}
+```
+
+### Common Error Codes
+
+| Code | HTTP Status | Description |
+|------|------------|-------------|
+| `UNAUTHORIZED` | 401 | Missing or invalid API key |
+| `FORBIDDEN` | 403 | API key lacks required scope |
+| `NOT_FOUND` | 404 | Resource does not exist |
+| `VALIDATION_ERROR` | 422 | Request body failed validation |
+| `RATE_LIMITED` | 429 | Rate limit exceeded |
+| `PASSPORT_EXPIRED` | 400 | Passport has passed its `expires_at` |
+| `PASSPORT_REVOKED` | 400 | Passport has been revoked |
+| `ISSUER_NOT_TRUSTED` | 403 | Passport issuer not in gate's trusted list |
+| `PERMISSION_DENIED` | 403 | Passport lacks required permission |
+| `CONSTRAINT_VIOLATION` | 403 | Guardrail constraint blocked the action |
+| `SIGNATURE_INVALID` | 400 | Passport or token signature is invalid |
+| `INTERNAL_ERROR` | 500 | Unexpected server error |
+
+---
+
+## CORS
+
+The API supports CORS for browser-based applications. Allowed origins must be configured in your Supravisor account settings. The authorization endpoint (`POST /api/authorize`) is CORS-enabled by default.
+
+---
+
+## Versioning
+
+The current API version is `v1`. The version is implicit in the base URL. Breaking changes will be announced with a new version prefix (`/api/v2/...`) with at least 90 days of parallel support.
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Passports API" href="/api-reference/passports" icon="id-card">
+    Issue and manage agent credentials.
+  </Card>
+  <Card title="Gates API" href="/api-reference/gates" icon="shield">
+    Create and configure enforcement points.
+  </Card>
+  <Card title="Audit Trail API" href="/api-reference/audit-trail" icon="file-lines">
+    Query attestations and export audit records.
+  </Card>
+</CardGroup>

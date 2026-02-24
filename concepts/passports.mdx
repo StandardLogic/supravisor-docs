@@ -1,0 +1,246 @@
+---
+title: "Passports"
+description: "Cryptographically signed credentials for your AI agents."
+---
+
+# Passports
+
+A **passport** is a signed credential that tells any gate exactly who an agent is and what it's allowed to do. Every AI agent that interacts with Supravisor-protected resources carries one. Without a valid passport, there's nothing to check — the gate simply denies.
+
+Think of a passport as the agent's ID card plus permission slip, all in one signed document. Because it's cryptographically signed by an issuer's Ed25519 private key, it cannot be forged or altered. A gate can verify the signature instantly without any network call.
+
+---
+
+## Passport Anatomy
+
+Every passport is a JSON object with two top-level fields: the `payload` (the claims) and the `signature` (the proof).
+
+```json
+{
+  "payload": {
+    "passport_id": "uni_abc123",
+    "agent_id": "my-research-agent",
+    "agent_name": "Research Bot",
+    "issuer_id": "issuer:mycompany.ai",
+    "permissions": ["web:search", "mcp:read"],
+    "public_key": "base64_encoded_ed25519_public_key...",
+    "issued_at": "2026-02-24T00:00:00Z",
+    "expires_at": "2027-02-24T00:00:00Z"
+  },
+  "signature": "Ed25519-base64_encoded_signature_over_payload..."
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `passport_id` | Globally unique ID, always prefixed with `uni_` |
+| `agent_id` | Your slug for this agent — appears in audit logs |
+| `agent_name` | Human-readable name for the dashboard |
+| `issuer_id` | The authority that signed this passport |
+| `permissions` | Array of allowed permission namespaces |
+| `public_key` | The agent's public key (for L3 proof-of-possession) |
+| `issued_at` | ISO 8601 timestamp when the passport was created |
+| `expires_at` | ISO 8601 timestamp when the passport expires |
+| `signature` | Ed25519 signature over the canonical payload JSON |
+
+---
+
+## Permission Namespaces
+
+Permissions follow a `namespace:action` pattern. The `*` wildcard grants all actions within a namespace.
+
+| Namespace | Examples | Description |
+|-----------|---------|-------------|
+| `mcp:*` | `mcp:read`, `mcp:write`, `mcp:search` | MCP tool calls |
+| `web:*` | `web:search`, `web:read`, `web:fetch` | Web browsing and fetching |
+| `email:*` | `email:read`, `email:send`, `email:delete` | Email access |
+| `files:*` | `files:read`, `files:write`, `files:delete` | File system operations |
+| `payments:*` | `payments:read`, `payments:send`, `payments:refund` | Payment operations |
+| `api:*` | `api:read`, `api:write`, `api:admin` | Generic API calls |
+| `tools:*` | `tools:search`, `tools:execute` | Tool use (OpenAI/LangChain style) |
+| `*` | (all permissions) | Full access — use with caution |
+
+<Warning>
+  Grant the minimum permissions your agent actually needs. A research agent shouldn't have `payments:send` or `files:delete`. Use specific namespaces, not `*`, in production.
+</Warning>
+
+---
+
+## The Private Key
+
+When you issue a passport through the dashboard, Supravisor generates an **Ed25519 keypair** for the agent in your browser:
+
+- The **public key** is embedded in the passport payload and stored by Supravisor
+- The **private key** is shown to you **once** and never stored by Supravisor
+
+The private key is what an agent uses to prove it's the legitimate holder of a passport (used in L3 proof-of-possession). Even at L1 and L2, the private key is the secret that makes the passport credential — keep it as secure as any password.
+
+### UNIPLEX_PASSPORT_KEY Environment Variable
+
+The standard way to give an agent its private key:
+
+```bash
+export UNIPLEX_PASSPORT_KEY="ed25519_private_key_base64_here"
+```
+
+In a `.env` file:
+```
+UNIPLEX_PASSPORT_KEY=ed25519_private_key_base64_here
+```
+
+The SDK reads this automatically when you call `Agent.from_env()`.
+
+---
+
+## Self-Issued L1 Passports (No Account Needed)
+
+For local development and quick prototyping, you can create a passport entirely client-side with no Supravisor account:
+
+<CodeGroup>
+```python Python
+from uniplex import Agent
+
+# Creates a self-signed passport with L1 trust
+agent = Agent.create("my-agent", permissions="mcp:*")
+
+# Use it immediately
+decision = agent.authorize("mcp:search")
+print(decision.allowed)   # True
+
+# Save the passport for reuse
+print(agent.export_passport())  # JSON string to store
+```
+
+```typescript TypeScript
+import { Agent } from 'uniplex';
+
+// Creates a self-signed passport with L1 trust
+const agent = await Agent.create('my-agent', { permissions: ['mcp:*'] });
+
+// Use it immediately
+const decision = await agent.authorize('mcp:search');
+console.log(decision.allowed);  // true
+
+// Save the passport for reuse
+console.log(agent.exportPassport());  // JSON string to store
+```
+</CodeGroup>
+
+<Note>
+  Self-issued passports are only accepted by gates configured with L1 trust profile. For production, issue passports through the dashboard with an L2 gate.
+</Note>
+
+---
+
+## Loading an Existing Passport
+
+<CodeGroup>
+```python Python
+import os
+from uniplex import Agent
+
+# Load from environment variable (recommended)
+agent = Agent.from_env()
+
+# Load from explicit passport ID and key
+agent = Agent(
+    passport_id="uni_abc123",
+    private_key=os.environ["MY_AGENT_KEY"]
+)
+
+# Load from exported passport JSON
+agent = Agent.from_json(passport_json_string)
+
+# Check details
+print(agent.passport_id)  # "uni_abc123"
+print(agent.expires_at)   # datetime(2027, 2, 24, 0, 0, 0)
+print(agent.permissions)  # ["web:search", "mcp:read"]
+```
+
+```typescript TypeScript
+import { Agent } from 'uniplex';
+
+// Load from environment variable (recommended)
+const agent = await Agent.fromEnv();
+
+// Load from explicit passport ID and key
+const agent = new Agent({
+  passportId: 'uni_abc123',
+  privateKey: process.env.MY_AGENT_KEY!,
+});
+
+// Check details
+console.log(agent.passportId);  // "uni_abc123"
+console.log(agent.expiresAt);   // Date object
+console.log(agent.permissions); // ["web:search", "mcp:read"]
+```
+</CodeGroup>
+
+---
+
+## Expiration and Renewal
+
+Passports have an `expires_at` timestamp. After that moment, every gate check returns denied. The agent must be given a new passport before expiry.
+
+**Recommended expiration windows:**
+
+| Use Case | Suggested TTL |
+|----------|--------------|
+| Local dev | 365 days |
+| Internal tools | 180 days |
+| Production agents | 90 days |
+| High-security agents | 30 days |
+| One-time automation | 1–7 days |
+
+**Autonomous renewal (for agents that manage their own credentials):**
+
+```python
+from uniplex import Agent, UniplexClient
+from datetime import datetime, timedelta
+
+client = UniplexClient(api_key=os.environ["UNIPLEX_API_KEY"])
+agent = Agent.from_env()
+
+# Rotate 7 days before expiry
+days_until_expiry = (agent.expires_at - datetime.utcnow()).days
+if days_until_expiry < 7:
+    new_passport = client.passports.issue(
+        agent_id=agent.agent_id,
+        permissions=agent.permissions,
+        expires_in="90d"
+    )
+    # Store new key in secrets manager
+    print(f"Rotated: {new_passport.passport_id}")
+```
+
+---
+
+## Revocation
+
+Revoking a passport is instant. The moment you click **Revoke** in the dashboard (or call the API), every gate that checks the passport will deny it — even if it hasn't expired.
+
+```bash
+curl -X DELETE https://uniplex.ai/api/passports/uni_abc123 \
+  -H "Authorization: Bearer uni_xxxx"
+```
+
+Revocation is enforced at the gate level for L2/L3 profiles, and checked against Supravisor's revocation list for L3. At L1, revocation is not enforced (by design — L1 is for local dev).
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Set Up a Gate" href="/concepts/gates" icon="shield">
+    Create the enforcement point that verifies passports.
+  </Card>
+  <Card title="Passports API" href="/api-reference/passports" icon="code">
+    Full REST reference for issuing and revoking passports.
+  </Card>
+  <Card title="Trust Profiles" href="/concepts/trust-profiles" icon="layers">
+    Choose the right security level for your deployment.
+  </Card>
+  <Card title="Python SDK" href="/sdk/python" icon="python">
+    Full reference for the Python uniplex library.
+  </Card>
+</CardGroup>

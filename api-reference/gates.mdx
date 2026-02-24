@@ -1,0 +1,257 @@
+---
+title: "Gates API"
+description: "Create and manage authorization enforcement points."
+---
+
+# Gates API
+
+Gates are the enforcement checkpoints that verify agent passports and evaluate guardrail constraints. This API covers CRUD operations for gates.
+
+**Base URL:** `https://uniplex.ai/api`
+
+---
+
+## List Gates
+
+```
+GET /api/gates
+```
+
+**Required scope:** `gates:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | string | `active` or `deleted` |
+| `profile` | string | Filter by `L1`, `L2`, or `L3` |
+| `limit` | integer | Results per page (default: 50) |
+| `offset` | integer | Pagination offset |
+
+**Example Request:**
+
+```bash
+curl https://uniplex.ai/api/gates \
+  -H "Authorization: Bearer uni_xxxx"
+```
+
+**Response:**
+
+```json
+{
+  "gates": [
+    {
+      "gate_id": "gate_def456",
+      "name": "Research Gate",
+      "profile": "L2",
+      "trusted_issuers": ["issuer:mycompany.ai"],
+      "status": "active",
+      "total_checks": 1243,
+      "allow_rate": 0.94,
+      "created_at": "2026-01-20T00:00:00Z"
+    }
+  ],
+  "total": 4,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+---
+
+## Create Gate
+
+```
+POST /api/gates
+```
+
+**Required scope:** `gates:create`
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✅ | Human-readable gate name |
+| `profile` | string | ✅ | `L1`, `L2`, or `L3` |
+| `trusted_issuers` | string[] | ❌ | Issuer IDs to accept (required for L2/L3) |
+| `constraints` | object | ❌ | Guardrail constraints |
+| `template` | string | ❌ | Apply a constraint template by name |
+| `required_permissions` | string[] | ❌ | Passport must include these permissions |
+
+**Example Request:**
+
+```bash
+curl -X POST https://uniplex.ai/api/gates \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Research Gate",
+    "profile": "L2",
+    "trusted_issuers": ["issuer:mycompany.ai"],
+    "constraints": {
+      "max_per_day": "$50.00",
+      "max_per_minute": 10,
+      "domain_allowlist": "google.com,arxiv.org,wikipedia.org",
+      "read_only": true
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "gate_id": "gate_def456",
+  "name": "Research Gate",
+  "profile": "L2",
+  "trusted_issuers": ["issuer:mycompany.ai"],
+  "required_permissions": [],
+  "constraints": {
+    "max_per_day": "$50.00",
+    "max_per_minute": 10,
+    "domain_allowlist": "google.com,arxiv.org,wikipedia.org",
+    "read_only": true
+  },
+  "public_key": "base64_gate_public_key_for_attestation_verification...",
+  "status": "active",
+  "created_at": "2026-02-24T10:00:00Z"
+}
+```
+
+---
+
+## Get Gate
+
+```
+GET /api/gates/:gate_id
+```
+
+**Required scope:** `gates:read`
+
+**Example Request:**
+
+```bash
+curl https://uniplex.ai/api/gates/gate_def456 \
+  -H "Authorization: Bearer uni_xxxx"
+```
+
+**Response:**
+
+```json
+{
+  "gate_id": "gate_def456",
+  "name": "Research Gate",
+  "profile": "L2",
+  "trusted_issuers": ["issuer:mycompany.ai"],
+  "required_permissions": [],
+  "constraints": {
+    "max_per_day": "$50.00",
+    "max_per_minute": 10,
+    "domain_allowlist": "google.com,arxiv.org,wikipedia.org",
+    "read_only": true
+  },
+  "public_key": "base64_gate_public_key...",
+  "status": "active",
+  "total_checks": 1243,
+  "allow_rate": 0.94,
+  "last_check_at": "2026-02-24T15:30:00Z",
+  "created_at": "2026-01-20T00:00:00Z",
+  "updated_at": "2026-02-10T00:00:00Z"
+}
+```
+
+---
+
+## Update Gate
+
+Update a gate's configuration. Changes take effect immediately on subsequent authorization checks.
+
+```
+PUT /api/gates/:gate_id
+```
+
+**Required scope:** `gates:update`
+
+**Request Body:** Same fields as create. Provide only fields you want to change.
+
+**Example Request:**
+
+```bash
+# Add a domain to the blocklist
+curl -X PUT https://uniplex.ai/api/gates/gate_def456 \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "constraints": {
+      "max_per_day": "$75.00",
+      "domain_blocklist": "reddit.com,twitter.com"
+    }
+  }'
+```
+
+**Response:** Returns the full updated gate object.
+
+---
+
+## Delete Gate
+
+Delete a gate. Deleting a gate does not affect passports — it only removes the enforcement point.
+
+```
+DELETE /api/gates/:gate_id
+```
+
+**Required scope:** `gates:delete`
+
+**Example Request:**
+
+```bash
+curl -X DELETE https://uniplex.ai/api/gates/gate_def456 \
+  -H "Authorization: Bearer uni_xxxx"
+```
+
+**Response:**
+
+```json
+{
+  "gate_id": "gate_def456",
+  "status": "deleted",
+  "deleted_at": "2026-02-24T16:00:00Z"
+}
+```
+
+---
+
+## Export Gate Public Key
+
+Get the gate's Ed25519 public key for offline attestation verification.
+
+```
+GET /api/gates/:gate_id/public-key
+```
+
+**Required scope:** `gates:read`
+
+**Response:**
+
+```json
+{
+  "gate_id": "gate_def456",
+  "public_key": "base64_ed25519_public_key_for_attestation_verification...",
+  "key_format": "ed25519_base64"
+}
+```
+
+Use this public key to independently verify that attestations haven't been tampered with. See [Attestations → Verifying a Signature Offline](/concepts/attestations#verifying-a-signature-offline).
+
+---
+
+## Error Responses
+
+| Error Code | HTTP Status | Description |
+|-----------|------------|-------------|
+| `GATE_NOT_FOUND` | 404 | No gate with this ID |
+| `GATE_ALREADY_DELETED` | 400 | Cannot update a deleted gate |
+| `INVALID_PROFILE` | 422 | Profile must be L1, L2, or L3 |
+| `INVALID_ISSUER` | 422 | One or more issuer IDs are invalid |
+| `INVALID_CONSTRAINT` | 422 | Constraint value format is invalid |

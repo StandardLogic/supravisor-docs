@@ -1,0 +1,258 @@
+---
+title: "Guardrails API"
+description: "Configure and manage constraint policies."
+---
+
+# Guardrails API
+
+Guardrails are the constraint policies embedded in gates. While most constraint management happens through the [Gates API](/api-reference/gates), the Guardrails API lets you create reusable constraint configurations and apply them across multiple gates.
+
+**Base URL:** `https://uniplex.ai/api`
+
+---
+
+## List Guardrail Configurations
+
+Retrieve saved guardrail configurations for the authenticated account.
+
+```
+GET /api/guardrails
+```
+
+**Required scope:** `guardrails:read`
+
+**Example Request:**
+
+```bash
+curl https://uniplex.ai/api/guardrails \
+  -H "Authorization: Bearer uni_xxxx"
+```
+
+**Response:**
+
+```json
+{
+  "guardrails": [
+    {
+      "guardrail_id": "gr_abc123",
+      "name": "Standard Research Limits",
+      "description": "Used for all research agents",
+      "gates_applied": 3,
+      "constraints": {
+        "max_per_day": "$50.00",
+        "max_per_minute": 10,
+        "domain_allowlist": "google.com,arxiv.org",
+        "read_only": true,
+        "no_pii_export": true
+      },
+      "created_at": "2026-01-15T00:00:00Z"
+    }
+  ],
+  "total": 5
+}
+```
+
+---
+
+## Create Guardrail Configuration
+
+Create a named, reusable constraint configuration.
+
+```
+POST /api/guardrails
+```
+
+**Required scope:** `guardrails:create`
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✅ | Human-readable name |
+| `description` | string | ❌ | Optional description |
+| `constraints` | object | ✅ | The constraint configuration |
+
+**Constraints Object Fields:**
+
+| Field | Type | Description | Example |
+|-------|------|-------------|---------|
+| `max_per_action` | string | Max spend per single action | `"$5.00"` |
+| `max_per_minute` | integer | Max actions per minute | `10` |
+| `max_per_hour` | integer | Max actions per hour | `100` |
+| `max_per_day` | string | Max spend per day | `"$50.00"` |
+| `max_cumulative` | string | Lifetime cumulative spend cap | `"$500.00"` |
+| `cumulative_window` | string | Rolling window for cumulative | `"30d"` |
+| `approval_threshold` | string | Human approval above this | `"$25.00"` |
+| `domain_allowlist` | string | Comma-separated allowed domains | `"openai.com,anthropic.com"` |
+| `domain_blocklist` | string | Comma-separated blocked domains | `"facebook.com,twitter.com"` |
+| `action_allowlist` | string[] | Permitted actions only | `["web:search", "mcp:read"]` |
+| `action_blocklist` | string[] | Always deny these | `["files:delete", "payments:send"]` |
+| `read_only` | boolean | Block all write operations | `true` |
+| `no_pii_export` | boolean | Detect and block PII export | `true` |
+| `required` | string | Required request metadata field | `"user_id"` |
+| `model` | string | Required AI model | `"claude-3-5-sonnet"` |
+| `response_time_ms` | integer | SLA latency requirement (ms) | `2000` |
+| `uptime_basis_points` | integer | SLA uptime (e.g., 9900 = 99%) | `9900` |
+
+**Example Request:**
+
+```bash
+curl -X POST https://uniplex.ai/api/guardrails \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Standard Research Limits",
+    "description": "Conservative defaults for all research agents",
+    "constraints": {
+      "max_per_day": "$50.00",
+      "max_per_minute": 10,
+      "max_per_hour": 200,
+      "domain_allowlist": "google.com,arxiv.org,wikipedia.org,pubmed.ncbi.nlm.nih.gov",
+      "read_only": true,
+      "no_pii_export": true,
+      "action_allowlist": ["web:search", "web:read", "web:fetch"]
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "guardrail_id": "gr_def789",
+  "name": "Standard Research Limits",
+  "description": "Conservative defaults for all research agents",
+  "constraints": {
+    "max_per_day": "$50.00",
+    "max_per_minute": 10,
+    "max_per_hour": 200,
+    "domain_allowlist": "google.com,arxiv.org,wikipedia.org,pubmed.ncbi.nlm.nih.gov",
+    "read_only": true,
+    "no_pii_export": true,
+    "action_allowlist": ["web:search", "web:read", "web:fetch"]
+  },
+  "created_at": "2026-02-24T10:00:00Z"
+}
+```
+
+---
+
+## Get Guardrail Configuration
+
+```
+GET /api/guardrails/:guardrail_id
+```
+
+**Required scope:** `guardrails:read`
+
+```bash
+curl https://uniplex.ai/api/guardrails/gr_def789 \
+  -H "Authorization: Bearer uni_xxxx"
+```
+
+---
+
+## Update Guardrail Configuration
+
+```
+PUT /api/guardrails/:guardrail_id
+```
+
+**Required scope:** `guardrails:update`
+
+Updates the constraint configuration. Changes propagate to all gates that use this guardrail configuration.
+
+```bash
+curl -X PUT https://uniplex.ai/api/guardrails/gr_def789 \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "constraints": {
+      "max_per_day": "$75.00",
+      "max_per_minute": 15
+    }
+  }'
+```
+
+---
+
+## Apply Guardrail to Gate
+
+Apply a saved guardrail configuration to one or more gates.
+
+```
+POST /api/guardrails/:guardrail_id/apply
+```
+
+**Required scope:** `guardrails:update`, `gates:update`
+
+```bash
+curl -X POST https://uniplex.ai/api/guardrails/gr_def789/apply \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gate_ids": ["gate_abc", "gate_def", "gate_ghi"]
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "guardrail_id": "gr_def789",
+  "applied_to": ["gate_abc", "gate_def", "gate_ghi"],
+  "applied_at": "2026-02-24T10:30:00Z"
+}
+```
+
+---
+
+## Validate a Constraint Config
+
+Check whether a constraint configuration is valid before applying it to a gate.
+
+```
+POST /api/guardrails/validate
+```
+
+**Required scope:** Any valid API key
+
+```bash
+curl -X POST https://uniplex.ai/api/guardrails/validate \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "constraints": {
+      "max_per_day": "not-a-dollar-amount",
+      "uptime_basis_points": 99999
+    }
+  }'
+```
+
+**Response (validation failure):**
+
+```json
+{
+  "valid": false,
+  "errors": [
+    {
+      "field": "max_per_day",
+      "message": "Must be a dollar amount like \"$50.00\""
+    },
+    {
+      "field": "uptime_basis_points",
+      "message": "Must be between 0 and 10000 (100.00%)"
+    }
+  ]
+}
+```
+
+---
+
+## Error Responses
+
+| Error Code | HTTP Status | Description |
+|-----------|------------|-------------|
+| `GUARDRAIL_NOT_FOUND` | 404 | No guardrail with this ID |
+| `INVALID_CONSTRAINT_VALUE` | 422 | A constraint value has invalid format |
+| `CONFLICTING_CONSTRAINTS` | 422 | Constraint combination is contradictory (e.g., action in both allowlist and blocklist) |

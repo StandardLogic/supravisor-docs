@@ -1,0 +1,281 @@
+---
+title: "Finance & Commerce Templates"
+description: "6 templates for financial AI agents — built with strict guardrails."
+---
+
+# Finance & Commerce Templates
+
+Financial agents require the strictest guardrails. These templates are built around L2 or L3 trust profiles with multiple layers of protection: spending caps, approval thresholds, PII blocks, and full audit trails.
+
+<Warning>
+  Always test finance templates in a sandbox environment before production deployment. Use L3 trust profile for any agent that can execute real transactions.
+</Warning>
+
+---
+
+## 1. Budget Tracker
+
+**Use case:** An AI that reads transaction history, categorizes spending, and generates budget reports — with no ability to create, modify, or execute any financial transactions.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `read_only` | `true` | Absolute — analysis only |
+| `action_allowlist` | `transactions:read, accounts:read, reports:create` | Read + report |
+| `no_pii_export` | `true` | Financial data protection |
+| Trust Profile | L2 | Production-grade verification |
+
+```json
+{
+  "template": "budget-tracker",
+  "profile": "L2",
+  "constraints": {
+    "read_only": true,
+    "action_allowlist": [
+      "transactions:read",
+      "accounts:read",
+      "budgets:read",
+      "reports:create",
+      "categories:read"
+    ],
+    "action_blocklist": [
+      "transactions:create",
+      "transactions:delete",
+      "payments:send",
+      "accounts:transfer"
+    ],
+    "no_pii_export": true,
+    "required": "account_id"
+  }
+}
+```
+
+---
+
+## 2. Invoice Processor
+
+**Use case:** An AI that reads invoices, extracts line items, and creates records in your accounting system — but cannot execute payments. Any invoice above a threshold requires human approval before recording.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `action_blocklist` | `payments:send, payments:approve` | No payment execution |
+| `approval_threshold` | `$1000.00` | Human reviews large invoices |
+| `no_pii_export` | `true` | Vendor PII protection |
+| `required` | `invoice_id` | All actions tied to an invoice |
+
+```json
+{
+  "template": "invoice-processor",
+  "profile": "L2",
+  "constraints": {
+    "action_allowlist": [
+      "invoices:read",
+      "invoices:create_record",
+      "invoices:update_status",
+      "accounting:create_entry",
+      "files:read"
+    ],
+    "action_blocklist": [
+      "payments:send",
+      "payments:approve",
+      "payments:execute",
+      "invoices:delete"
+    ],
+    "approval_threshold": "$1000.00",
+    "no_pii_export": true,
+    "required": "invoice_id",
+    "read_only": false
+  }
+}
+```
+
+---
+
+## 3. Financial Research Agent
+
+**Use case:** An AI that reads market data, analyzes financial reports, and produces research summaries — completely read-only, no trade execution, no access to live account data.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `read_only` | `true` | No market operations |
+| `action_blocklist` | `trading:*, payments:*` | Hard block on all trading |
+| `domain_allowlist` | Public financial data sources only | No broker API access |
+| `no_pii_export` | `true` | Client data protection |
+
+```json
+{
+  "template": "financial-research-agent",
+  "profile": "L2",
+  "constraints": {
+    "read_only": true,
+    "action_allowlist": [
+      "market:read_price",
+      "market:read_history",
+      "filings:read",
+      "news:read",
+      "reports:create"
+    ],
+    "action_blocklist": [
+      "trading:buy",
+      "trading:sell",
+      "trading:order",
+      "payments:send",
+      "accounts:read_live"
+    ],
+    "domain_allowlist": "finance.yahoo.com,sec.gov,bloomberg.com,wsj.com,reuters.com,alpha-vantage.co",
+    "no_pii_export": true,
+    "max_per_minute": 10
+  }
+}
+```
+
+---
+
+## 4. Crypto Trading Agent (STRICT)
+
+**Use case:** An AI that executes cryptocurrency trades within strict limits. This is the highest-risk template — always deploy with L3 trust profile, full audit, and multiple safeguards.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `max_per_action` | `$100.00` | No single trade over $100 |
+| `max_per_day` | `$500.00` | $500 daily trading cap |
+| `approval_threshold` | `$50.00` | Human approves trades over $50 |
+| `no_pii_export` | `true` | Financial privacy |
+| Trust Profile | **L3** | Proof-of-possession required |
+
+```json
+{
+  "template": "crypto-trading-agent",
+  "profile": "L3",
+  "constraints": {
+    "max_per_action": "$100.00",
+    "max_per_day": "$500.00",
+    "max_cumulative": "$5000.00",
+    "cumulative_window": "30d",
+    "approval_threshold": "$50.00",
+    "action_allowlist": [
+      "trading:buy",
+      "trading:sell",
+      "trading:limit_order",
+      "market:read_price",
+      "portfolio:read"
+    ],
+    "action_blocklist": [
+      "trading:margin",
+      "trading:futures",
+      "trading:options",
+      "payments:withdraw_large"
+    ],
+    "no_pii_export": true,
+    "required": "trade_id",
+    "model": "claude-3-5-sonnet"
+  }
+}
+```
+
+<Warning>
+  This template uses **L3 trust profile** — proof-of-possession is required for every trade request. The agent must sign each request with its private key. Do not deploy this with L1 or L2.
+  
+  Always start with the budget tracker to verify the agent's analysis is sound before enabling trade execution.
+</Warning>
+
+---
+
+## 5. Payroll Assistant
+
+**Use case:** An AI that reads payroll data, identifies anomalies, and prepares payroll runs for human review — with dual-approval required before any payroll execution, and hard blocks on SSN and salary field exports.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `action_blocklist` | `payroll:execute, payments:send, hris:export_ssn` | No execution |
+| `no_pii_export` | `true` | SSN and salary protection |
+| `approval_threshold` | `$0.01` | All payroll actions require approval |
+| Trust Profile | L3 | Maximum security for payroll data |
+
+```json
+{
+  "template": "payroll-assistant",
+  "profile": "L3",
+  "constraints": {
+    "action_allowlist": [
+      "payroll:read",
+      "payroll:calculate",
+      "payroll:draft_run",
+      "payroll:flag_anomaly",
+      "hris:read_public",
+      "reports:create"
+    ],
+    "action_blocklist": [
+      "payroll:execute",
+      "payroll:approve",
+      "payments:send",
+      "hris:read_ssn",
+      "hris:read_bank_routing",
+      "hris:export"
+    ],
+    "no_pii_export": true,
+    "approval_threshold": "$0.01",
+    "required": "payroll_period_id",
+    "read_only": false
+  }
+}
+```
+
+---
+
+## 6. Subscription Manager
+
+**Use case:** An AI that monitors subscriptions, identifies unused services, and can cancel subscriptions — but cannot sign up for new services or increase spending without explicit human approval.
+
+| Constraint | Value | Why |
+|-----------|-------|-----|
+| `action_blocklist` | `subscriptions:create, payments:send_new` | No new subscriptions |
+| `approval_threshold` | `$0.01` | All cancellations require confirmation |
+| `no_pii_export` | `true` | Payment method protection |
+
+```json
+{
+  "template": "subscription-manager",
+  "profile": "L2",
+  "constraints": {
+    "action_allowlist": [
+      "subscriptions:read",
+      "subscriptions:cancel",
+      "subscriptions:downgrade",
+      "payments:read",
+      "reports:create"
+    ],
+    "action_blocklist": [
+      "subscriptions:create",
+      "subscriptions:upgrade_auto",
+      "payments:send",
+      "payments:add_payment_method"
+    ],
+    "approval_threshold": "$0.01",
+    "no_pii_export": true,
+    "required": "subscription_id"
+  }
+}
+```
+
+---
+
+## Applying Finance Templates
+
+```bash
+# Apply the Crypto Trading Agent template with L3
+curl -X POST https://uniplex.ai/api/gates \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Crypto Trading Gate",
+    "profile": "L3",
+    "trusted_issuers": ["issuer:fintech.mycompany.ai"],
+    "template": "crypto-trading-agent"
+  }'
+```
+
+---
+
+<Card title="Browse All Templates" href="/templates/overview" icon="grid">
+  Back to the full template overview with all 30 profiles.
+</Card>

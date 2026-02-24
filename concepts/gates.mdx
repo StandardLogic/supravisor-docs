@@ -1,0 +1,293 @@
+---
+title: "Gates"
+description: "The enforcement layer that verifies agent credentials."
+---
+
+# Gates
+
+A **gate** is the enforcement layer between an AI agent and a resource. Every time an agent wants to perform an action — search the web, call an API, send an email, spend money — the gate checks its passport, evaluates the guardrail constraints, and makes an allow/deny decision. The whole process takes under a millisecond.
+
+Gates are configured by you: which issuers they trust, which security level to enforce, and which guardrails to apply. Once deployed, they operate automatically with no human intervention required.
+
+---
+
+## How Gates Work
+
+```
+Agent Request
+     │
+     ▼
+┌─────────────────────────────────────────┐
+│  Gate                                   │
+│  1. Parse passport token                │
+│  2. Verify Ed25519 signature            │
+│  3. Check issuer is trusted             │
+│  4. Check passport not expired          │
+│  5. Check passport not revoked (L3)     │
+│  6. Verify permissions include action   │
+│  7. Evaluate guardrail constraints      │
+│  8. Sign attestation record             │
+└─────────────────────────────────────────┘
+     │
+     ├── ALLOW → proceed + attestation
+     └── DENY  → error + reason + attestation
+```
+
+**Key property: local verification.** Steps 1–7 require no network call. The Ed25519 signature verification, permission checks, and constraint evaluation all happen in-process. Only step 5 (L3 revocation check) makes a network call, and it's cached aggressively.
+
+This means gate latency adds **under 1ms** to your request path, regardless of network conditions.
+
+---
+
+## Security Levels
+
+Gates run at one of three trust profiles. Choose based on your risk tolerance.
+
+| Level | Name | Replay Protection | Revocation Check | Best For |
+|-------|------|-------------------|-----------------|---------|
+| L1 | Baseline | ❌ | ❌ | Local dev, prototyping |
+| L2 | Standard | ✅ (nonce) | ✅ (cached) | Production, external-facing |
+| L3 | Strict | ✅ (PoP sig) | ✅ (live) | Finance, healthcare, high-stakes |
+
+<Card title="Learn more about Trust Profiles" href="/concepts/trust-profiles" icon="layers">
+  Detailed comparison of L1, L2, and L3 with code examples.
+</Card>
+
+---
+
+## Gate Configuration
+
+A gate has four key configuration areas:
+
+### 1. Trusted Issuers
+The list of issuer IDs whose signed passports are accepted. Any passport signed by an issuer not on this list is rejected immediately.
+
+```json
+{
+  "trusted_issuers": ["issuer:acmecorp.ai", "issuer:dev.acmecorp.ai"]
+}
+```
+
+### 2. Required Permissions
+If set, the passport must include *at least* these permissions. Useful for ensuring agents that reach this gate are purpose-built for it.
+
+```json
+{
+  "required_permissions": ["api:read"]
+}
+```
+
+### 3. Guardrail Constraints
+The rulebook — spending limits, rate limits, domain allowlists, and more. [See all 17 constraint types →](/concepts/guardrails)
+
+```json
+{
+  "constraints": {
+    "max_per_day": "$50.00",
+    "domain_allowlist": "openai.com,anthropic.com",
+    "read_only": false,
+    "max_per_minute": 10
+  }
+}
+```
+
+### 4. Security Profile
+
+```json
+{
+  "profile": "L2"
+}
+```
+
+---
+
+## Decision Outcomes
+
+Every gate check produces a **Decision** with three components:
+
+1. **`allowed`** — boolean
+2. **`reason`** — human-readable explanation (always present, even on allow)
+3. **`attestation_id`** — the ID of the signed record of this decision
+
+```json
+{
+  "allowed": false,
+  "reason": "Spending limit exceeded: $47.80 of $50.00 daily limit used",
+  "attestation_id": "att_xyz789",
+  "checked_at": "2026-02-24T15:30:00Z"
+}
+```
+
+The attestation is a cryptographically signed record of the decision. It cannot be altered after the fact. [Learn more about Attestations →](/concepts/attestations)
+
+---
+
+## Creating a Gate
+
+<Steps>
+  <Step title="Open the Gates page">
+    In the Supravisor dashboard, click **Gates** in the sidebar.
+  </Step>
+  <Step title="Click New Gate">
+    Click **+ New Gate**. Give it a name that reflects what it protects (e.g., "Research API Gate", "Email Service Gate").
+  </Step>
+  <Step title="Select trusted issuers">
+    Add one or more issuer IDs. Only passports signed by these issuers will be accepted.
+  </Step>
+  <Step title="Choose a security level">
+    Select L1 (dev), L2 (standard), or L3 (strict).
+  </Step>
+  <Step title="Configure guardrails">
+    Apply a template or configure constraints manually. [Browse templates →](/templates/overview)
+  </Step>
+  <Step title="Save and note the Gate ID">
+    The gate is assigned an ID like `gate_def456`. You'll use this ID when making authorization checks via the API or SDK.
+  </Step>
+</Steps>
+
+---
+
+## Protecting an API Endpoint
+
+### Python (Flask)
+
+```python
+from flask import Flask, request, jsonify
+from uniplex import Gate, TrustProfile
+
+app = Flask(__name__)
+
+# Gate is initialized once — verify credentials cached in memory
+gate = Gate(
+    profile=TrustProfile.L2,
+    trusted_issuers=["issuer:mycompany.ai"],
+    constraints={
+        "max_per_minute": 30,
+        "read_only": True
+    }
+)
+
+@app.route("/api/protected")
+def protected():
+    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if not token:
+        return jsonify({"error": "No authorization token provided"}), 401
+
+    decision = gate.authorize(token, "api:read")
+
+    if not decision.allowed:
+        return jsonify({
+            "error": decision.reason,
+            "attestation_id": decision.attestation_id
+        }), 403
+
+    # Agent is authorized — process the request
+    return jsonify({"data": "protected content"})
+```
+
+### TypeScript (Express)
+
+```typescript
+import express from 'express';
+import { Gate, TrustProfile } from 'uniplex';
+
+const app = express();
+
+const gate = new Gate({
+  profile: TrustProfile.L2,
+  trustedIssuers: ['issuer:mycompany.ai'],
+  constraints: {
+    maxPerMinute: 30,
+    readOnly: true,
+  },
+});
+
+app.get('/api/protected', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ error: 'No authorization token provided' });
+  }
+
+  const decision = await gate.authorize(token, 'api:read');
+
+  if (!decision.allowed) {
+    return res.status(403).json({
+      error: decision.reason,
+      attestationId: decision.attestationId,
+    });
+  }
+
+  res.json({ data: 'protected content' });
+});
+```
+
+### Python (FastAPI)
+
+```python
+from fastapi import FastAPI, HTTPException, Depends, Header
+from uniplex import Gate, TrustProfile
+from typing import Optional
+
+app = FastAPI()
+
+gate = Gate(profile=TrustProfile.L2, trusted_issuers=["issuer:mycompany.ai"])
+
+async def verify_agent(authorization: Optional[str] = Header(None)):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    token = authorization.replace("Bearer ", "")
+    decision = gate.authorize(token, "api:read")
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.reason)
+    return decision
+
+@app.get("/api/protected")
+async def protected(decision=Depends(verify_agent)):
+    return {"data": "protected content", "attestation": decision.attestation_id}
+```
+
+---
+
+## Using the Gate ID Programmatically
+
+You can reference a gate by its ID when using the managed API:
+
+```python
+from uniplex import Gate
+
+# Load a gate by its ID (connects to managed config)
+gate = Gate(gate_id="gate_def456", api_key="uni_xxxx")
+decision = gate.authorize(passport_token, "api:read")
+```
+
+Or via the REST API:
+
+```bash
+curl -X POST https://uniplex.ai/api/authorize \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "passport_token": "base64_passport_here",
+    "action": "api:read",
+    "gate_id": "gate_def456"
+  }'
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Guardrails" href="/concepts/guardrails" icon="sliders">
+    Configure the 17 constraint evaluators for your gate.
+  </Card>
+  <Card title="Trust Profiles" href="/concepts/trust-profiles" icon="layers">
+    Deep dive into L1, L2, and L3 security levels.
+  </Card>
+  <Card title="Gates API" href="/api-reference/gates" icon="code">
+    Full REST reference for gate management.
+  </Card>
+  <Card title="Templates" href="/templates/overview" icon="grid">
+    30 ready-to-use constraint configs.
+  </Card>
+</CardGroup>

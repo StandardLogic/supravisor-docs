@@ -1,0 +1,180 @@
+---
+title: "Protecting Your Agent (No Code Required)"
+description: "A plain-English guide to Supravisor for non-developers."
+---
+
+# Protecting Your Agent (No Code Required)
+
+Think about the last time you rented a car. The rental company didn't just hand you the keys — they checked your driver's license (to verify who you are), confirmed your insurance (to know what you're covered for), and set limits on where you could take the vehicle. Supravisor does the same thing for AI agents.
+
+Your AI agent — whether it's Claude, a custom GPT, or anything else — has real capabilities: it can browse the web, send emails, manage files, and spend money on your behalf. Without guardrails, it can do *too much*. Supravisor gives every agent a verifiable ID card, defines exactly what it's allowed to do, and keeps a signed record of everything it actually did. No code required to get started.
+
+---
+
+## How It Works in Plain English
+
+<CardGroup cols={2}>
+  <Card title="Issuer — Your Official Stamp" icon="stamp">
+    This is the authority that vouches for your agent. Think of it as your company seal or notary stamp. When you create an issuer, you're saying "credentials from me are trustworthy."
+  </Card>
+  <Card title="Passport — Your Agent's ID Card" icon="id-card">
+    Every agent gets a passport: a signed document that says who the agent is and what it's allowed to do. Like a real passport, it has an expiration date and can be revoked instantly.
+  </Card>
+  <Card title="Gate — The Bouncer" icon="shield-check">
+    A gate sits in front of whatever your agent wants to access. Every time the agent wants to do something, the gate checks its passport, reads the rulebook, and decides allow or deny — in under a millisecond.
+  </Card>
+  <Card title="Guardrails — The Rulebook" icon="book-open">
+    The rulebook tells the bouncer exactly what to check: spending limits, allowed websites, rate limits, PII protection, and 13 more constraints. You pick which rules apply.
+  </Card>
+</CardGroup>
+
+---
+
+## Getting Started: 8 Steps
+
+<Steps>
+  <Step title="Create Your Supravisor Account">
+    Go to [uniplex.ai](https://uniplex.ai) and sign up. Use your work email if this is for a business agent. Once you're in, you'll land on the dashboard — your control center for everything.
+
+    **What this means:** You now have a place to manage all your agent credentials and rules.
+  </Step>
+
+  <Step title="Create an Issuer">
+    In the left sidebar, click **Issuers** → **New Issuer**. Give it a name (e.g., "My Personal Agents" or "Acme Corp"). Click **Generate Keys** — Supravisor will create a cryptographic stamp right in your browser.
+
+    <Warning>
+      The private key is generated in your browser and shown once. Copy it and store it somewhere safe — a password manager works great. Supravisor never sees it.
+    </Warning>
+
+    **What this means:** You now have your official stamp. Any passport you issue will be "signed" by this stamp, making it verifiable.
+  </Step>
+
+  <Step title="Issue a Passport for Your Agent">
+    Click **Passports** → **Issue Passport**. Fill in:
+    - **Agent Name:** Something descriptive like "Research Bot" or "My Email Helper"
+    - **Agent ID:** A short slug like `research-bot` (no spaces)
+    - **Permissions:** Choose from the list — start conservative (e.g., `web:search` only)
+    - **Expiration:** 90 days is a good default
+
+    Click **Issue Passport**. Your agent now has its ID card.
+
+    **What this means:** This passport defines who the agent is and what it's allowed to claim it can do. The gate will verify this before allowing any action.
+  </Step>
+
+  <Step title="Save the Private Key">
+    After issuing the passport, you'll see the **private key** — a long string of letters and numbers. This is shown **exactly once**.
+
+    Copy it and store it as an environment variable named `UNIPLEX_PASSPORT_KEY` wherever your agent runs (your computer, a server, a `.env` file). This is how your agent proves its identity.
+
+    <Tip>
+      Using Claude Code? Add `UNIPLEX_PASSPORT_KEY=your_key_here` to your `.env` file in your project root, or set it in your shell profile.
+    </Tip>
+
+    **What this means:** The private key is proof of identity. Anyone who has it can act as that agent — keep it secret.
+  </Step>
+
+  <Step title="Create a Gate">
+    Click **Gates** → **New Gate**. Give it a name like "Research Gate" or "Email Gate". 
+
+    Under **Trusted Issuers**, select the issuer you just created. Under **Security Level**, start with **L2 (Standard)** for anything that will talk to the internet.
+
+    **What this means:** The gate is the enforcer. It will check passports against your issuer's stamp and block anything that doesn't match.
+  </Step>
+
+  <Step title="Apply a Template (Your Rulebook)">
+    Still on the gate creation screen, click **Choose Template**. Browse the 30 built-in profiles:
+    - 🔍 **Web Research Agent** — search and read, nothing else
+    - 📧 **Personal Email Agent** — read/send, 50/day max
+    - 💻 **Code Review Agent** — read code and add comments, can't push to main
+
+    Pick the one closest to your use case. You can tweak the rules after.
+
+    **What this means:** Templates are pre-built rulebooks. Instead of configuring 17 settings manually, you pick a profile and you're 90% done.
+  </Step>
+
+  <Step title="Test It">
+    On your gate's page, click the **Test** tab. Paste your passport token (from step 3) and type an action like `web:search`. Click **Check**.
+
+    You'll see either ✅ **Allowed** or ❌ **Denied**, along with the exact reason. This is the same check your agent will face in real use.
+
+    **What this means:** You can verify everything is working before connecting a real AI agent. No surprises.
+  </Step>
+
+  <Step title="Read the Audit Trail">
+    After your agent has done some work, click **Activity** in the sidebar. Every single action your agent attempted is listed here, with:
+    - What it tried to do
+    - Whether it was allowed or denied
+    - Exactly which rule triggered (if denied)
+    - A cryptographic signature proving the record hasn't been altered
+
+    **What this means:** You have a permanent, tamper-proof record of everything your agent did. If something goes wrong, you'll know exactly what happened.
+  </Step>
+</Steps>
+
+---
+
+## Frequently Asked Questions
+
+<AccordionGroup>
+  <Accordion title="What if I lose my private key?">
+    If you lose the private key for a passport, you'll need to issue a new one. The old passport should be **revoked immediately** (click **Passports** → find it → **Revoke**) so that if anyone else found the key, they can't use it.
+
+    This is why storing the key in a password manager the moment you see it is so important. There's no "reset" or "resend" — the key is generated in your browser and Supravisor never sees it.
+  </Accordion>
+
+  <Accordion title="Can my agent do things I haven't allowed?">
+    No — if you've connected your agent to a gate. The gate checks every action before it executes. If the action isn't in the passport's permissions, or if a guardrail constraint is violated (like a spending limit), the gate returns a denial and the agent can't proceed.
+
+    This only works if your agent is actually connected to Supravisor. An agent running without Supravisor has no enforcement. The MCP integration is the easiest way to ensure enforcement is always on.
+  </Accordion>
+
+  <Accordion title="Is this only for Claude?">
+    Not at all. Supravisor works with any AI agent or automated system. Claude, GPT-4, Gemini, custom Python scripts, LangChain agents, AutoGen workflows — anything that can carry a token or make an API call can be protected.
+
+    Claude has the best integration because it speaks MCP natively, but the Python and TypeScript SDKs work everywhere.
+  </Accordion>
+
+  <Accordion title="What's the difference between a Passport and a Gate?">
+    Great question. Think of it this way:
+
+    - A **Passport** is *carried by the agent* — it's the agent's ID card that travels with every request
+    - A **Gate** is *installed by you* — it's the checkpoint that reads the passport and decides what's allowed
+
+    One agent has one passport. You can have many gates for different resources. The same agent passport can be checked against different gates with different rules.
+  </Accordion>
+
+  <Accordion title="Do I need to be a developer?">
+    For the dashboard — absolutely not. Creating issuers, issuing passports, setting up gates, applying templates, and reading the audit trail all happen in a point-and-click interface.
+
+    For connecting Supravisor to an AI agent, the easiest no-code path is the MCP integration: run one command (`npx uniplex-mcp-manage`), add Supravisor as an MCP server in Claude's settings, and you're done. Claude will manage its own credentials.
+
+    If you want to protect a custom application or script, that requires a few lines of code (Python or TypeScript), but the SDK is designed to be straightforward even for non-engineers.
+  </Accordion>
+
+  <Accordion title="How do I know if it's working?">
+    Three ways:
+
+    1. **Test tab on your gate** — paste the passport token and test an action. Instant feedback.
+    2. **Activity page** — after your agent runs, every action appears here within seconds. If you see green checkmarks, it's working.
+    3. **Try to do something blocked** — add `files:delete` to the blocklist, then try to have your agent delete a file. It should get a denial with a clear reason. If it does, Supravisor is enforcing correctly.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Connect Claude" href="/guides/protect-claude" icon="robot">
+    The fastest integration. Claude speaks MCP natively — one command and it's protected.
+  </Card>
+  <Card title="Browse Templates" href="/templates/overview" icon="grid">
+    30 ready-to-use agent profiles across 5 categories.
+  </Card>
+  <Card title="Understand Passports" href="/concepts/passports" icon="id-card">
+    Deep dive into how agent credentials work.
+  </Card>
+  <Card title="Read the Audit Trail" href="/guides/audit-trail" icon="file-lines">
+    Export, share, and verify your agent's activity log.
+  </Card>
+</CardGroup>

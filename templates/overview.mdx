@@ -1,0 +1,163 @@
+---
+title: "Constraint Templates"
+description: "30 ready-to-use agent profiles. Pick one, customize if needed, ship."
+---
+
+# Constraint Templates
+
+Templates are pre-built guardrail configurations for common agent types. Instead of hand-crafting 17 constraint values from scratch, you pick the profile closest to your use case and you're 90% done. Customize the remaining 10% if needed.
+
+---
+
+## How to Apply a Template
+
+<Steps>
+  <Step title="Open Gates in the dashboard">
+    Click **Gates** in the left sidebar.
+  </Step>
+  <Step title="Create a new gate or edit existing">
+    Click **+ New Gate**, or click an existing gate → **Edit**.
+  </Step>
+  <Step title="Choose a template">
+    Click **Choose Template** in the Constraints section. Browse by category or search by name.
+  </Step>
+  <Step title="Apply and customize">
+    Click **Apply**. The 17 constraint fields are populated. Adjust any values that don't fit your specific use case.
+  </Step>
+  <Step title="Save">
+    Click **Save Gate**. Your gate is now configured with the template's guardrails.
+  </Step>
+</Steps>
+
+**Via API:**
+
+```bash
+curl -X POST https://uniplex.ai/api/gates \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Research Gate",
+    "profile": "L2",
+    "trusted_issuers": ["issuer:mycompany.ai"],
+    "template": "web-research-agent"
+  }'
+```
+
+**Via MCP (tell Claude):**
+> "Apply the Web Research Agent template to my Research Gate."
+
+---
+
+## Template Categories
+
+<CardGroup cols={2}>
+  <Card title="Personal Productivity" href="/templates/personal-productivity" icon="house">
+    **6 templates** for personal AI assistants: email, calendar, files, notes, tasks, and shopping.
+    
+    Great for individual productivity agents with conservative defaults.
+  </Card>
+  <Card title="Business Operations" href="/templates/business-operations" icon="building">
+    **6 templates** for business process automation: customer support, sales, contracts, HR, expenses, and scheduling.
+    
+    Designed for team deployments with escalation paths.
+  </Card>
+  <Card title="Developer Tools" href="/templates/developer-tools" icon="code">
+    **6 templates** for AI-powered developer workflows: code review, CI/CD, docs, bug triage, security scanning, and dependency auditing.
+    
+    Read-heavy with write permissions carefully scoped.
+  </Card>
+  <Card title="Finance & Commerce" href="/templates/finance-commerce" icon="dollar-sign">
+    **6 templates** for financial AI agents — with strict guardrails. Budget tracking, invoice processing, crypto trading, payroll, and more.
+    
+    Built-in dual approval, PII protection, and audit trails.
+  </Card>
+  <Card title="Research & Content" href="/templates/research-content" icon="search">
+    **6 templates** for research and content creation: web research, content writing, social media, data analysis, market research, and competitive intelligence.
+    
+    Optimized for read-heavy, output-focused workflows.
+  </Card>
+</CardGroup>
+
+---
+
+## All 30 Templates at a Glance
+
+| Category | Template Name | Key Constraint |
+|----------|--------------|----------------|
+| Personal | Personal Email Agent | 50 emails/day, new contact approval |
+| Personal | Calendar Manager | 20 events/day, no delete |
+| Personal | File Organizer | Read/move only, no external sharing |
+| Personal | Note-Taking Agent | Create/edit, sensitive folders read-only |
+| Personal | Task Manager | Create/update, daily summary |
+| Personal | Personal Shopper | $500/action cap, $100 approval threshold |
+| Business | Customer Support Agent | KB + tickets, keyword escalation |
+| Business | Sales Development Agent | Research only, no emails without approval |
+| Business | Contract Review Agent | Read PDFs, flag clause types |
+| Business | HR Onboarding Agent | Template emails only, no SSN/salary |
+| Business | Expense Report Agent | Read receipts, no payment execution |
+| Business | Meeting Scheduler | Calendar R/W, limited external invites |
+| Developer | Code Review Agent | Git read + PR comments, no push to main |
+| Developer | CI/CD Agent | Trigger pipelines, no config changes |
+| Developer | Documentation Generator | Read code, write docs, no code changes |
+| Developer | Bug Triage Agent | Read + label, no close/delete |
+| Developer | Security Scanner | Read-only, flag CVEs, no auto-fix |
+| Developer | Dependency Auditor | npm/pip audit, report only |
+| Finance | Budget Tracker | Read transactions, no write |
+| Finance | Invoice Processor | Read + record, no payment, approval required |
+| Finance | Financial Research Agent | Read-only market data, no trades |
+| Finance | Crypto Trading Agent | $100/trade, $500/day, $50 approval |
+| Finance | Payroll Assistant | No SSN export, dual approval |
+| Finance | Subscription Manager | Cancel only with approval |
+| Research | Web Research Agent | Search + read, configurable allowlist |
+| Research | Content Writer | Draft only, no publish |
+| Research | Social Media Manager | 10 posts/day, no delete |
+| Research | Data Analyst | Read datasets, no raw PII export |
+| Research | Market Research Agent | Public web, no internal data |
+| Research | Competitive Intel Agent | Public web only, no logins |
+
+---
+
+## Customizing After Applying
+
+Templates set the defaults — you own the values. Common customizations:
+
+```bash
+# After applying a template, update specific constraints
+curl -X PUT https://uniplex.ai/api/gates/gate_def456 \
+  -H "Authorization: Bearer uni_xxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "constraints": {
+      "max_per_day": "$75.00",
+      "domain_allowlist": "myspecificdomain.com,arxiv.org"
+    }
+  }'
+```
+
+Or in the dashboard: **Gates** → your gate → **Edit** → change any constraint value.
+
+---
+
+## Creating Your Own Template
+
+Once you have a gate configured the way you like, save it as a template:
+
+1. Open the gate → **Edit**
+2. Click **Save as Template**
+3. Give it a name and description
+4. Optional: mark it as **Private** (only your account) or **Team** (shared with your organization)
+
+Custom templates appear in the template browser alongside the built-in 30. They can be applied to new gates just like any other template.
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Constraints" href="/guides/custom-constraints" icon="wrench">
+    Build constraints from scratch for unique use cases.
+  </Card>
+  <Card title="Guardrails Reference" href="/concepts/guardrails" icon="sliders">
+    Full reference for all 17 constraint types.
+  </Card>
+</CardGroup>

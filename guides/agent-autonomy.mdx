@@ -1,0 +1,301 @@
+---
+title: "Agent Autonomy"
+description: "How AI agents access and use Supravisor without human involvement."
+---
+
+# Agent Autonomy
+
+The promise of AI agents is that they operate without constant human intervention. Supravisor is designed for this: once a human sets up the trust infrastructure, agents can authenticate, authorize, rotate credentials, and verify each other — all without anyone clicking anything.
+
+This guide covers three paths to autonomous agent operation and the patterns that make them work at scale.
+
+---
+
+## The Bootstrap Problem
+
+Every autonomous system needs a human to set it up once. For Supravisor, the human's job is:
+
+```
+Human (one time)                    Agent (ongoing)
+──────────────                      ─────────────────────────────
+Create Supravisor account   ──►     
+Generate API key            ──►     Store in secrets manager
+Create issuer               ──►     
+Configure gates             ──►     
+                                    Issue sub-agent passports
+                                    Rotate expiring credentials
+                                    Verify other agents' passports
+                                    Read own audit trail
+                                    Make authorization decisions
+```
+
+After the bootstrap, the agent runs the show. The human's only ongoing responsibility is watching the audit trail for anomalies and responding to approval requests (if `approval_threshold` is configured).
+
+---
+
+## Path A: Self-Issued L1 Passports
+
+The simplest path — zero infrastructure, no account needed. The agent creates and carries its own credentials. Appropriate for local development and single-machine deployments.
+
+```python
+from uniplex import Agent
+
+# Agent creates its own passport (L1 — self-signed)
+agent = Agent.create(
+    agent_id="my-agent",
+    permissions=["mcp:*", "web:search"]
+)
+
+# Immediately usable
+decision = agent.authorize("mcp:search")
+print(decision.allowed)  # True
+
+# Save the passport for persistence across restarts
+passport_json = agent.export_passport()
+# Store this somewhere persistent (file, env var, secrets manager)
+
+# Later, restore from saved passport
+agent = Agent.from_json(passport_json)
+```
+
+**Limitations of Path A:**
+- Only works with L1 gates (no issuer verification)
+- No revocation — a stolen passport can be used until it expires
+- Not suitable for multi-agent systems where agents need to verify each other
+
+---
+
+## Path B: Managed Platform via API Key
+
+The recommended path for production. A human creates one API key during bootstrap; the agent uses it to issue its own passports, rotate credentials, and manage its trust infrastructure autonomously.
+
+### Bootstrap (Human, Once)
+
+```python
+# Human runs this once:
+from uniplex import UniplexClient
+
+client = UniplexClient(api_key="uni_xxxx")  # master API key
+
+# Create the issuer
+issuer = client.issuers.create(
+    name="Autonomous Agent Fleet",
+    issuer_id="issuer:mycompany.ai"
+)
+print(f"Issuer private key (save this!): {issuer.private_key}")
+
+# Create the gate
+gate = client.gates.create(
+    name="Production Gate",
+    profile="L2",
+    trusted_issuers=["issuer:mycompany.ai"],
+    constraints={"max_per_day": "$100.00", "read_only": False}
+)
+print(f"Gate ID: {gate.gate_id}")
+```
+
+### Autonomous Operation (Agent, Ongoing)
+
+```python
+import os
+from uniplex import UniplexClient, Agent
+
+# API key stored in secrets manager at bootstrap time
+client = UniplexClient(api_key=os.environ["UNIPLEX_API_KEY"])
+
+# Issue a sub-agent passport autonomously
+passport = client.passports.issue(
+    agent_id="autonomous-agent-001",
+    agent_name="Task Worker 001",
+    issuer_id="issuer:mycompany.ai",
+    permissions=["web:search", "mcp:read"],
+    expires_in="90d"
+)
+
+print(f"Issued passport: {passport.passport_id}")
+# The private key is in passport.private_key — store it immediately
+
+# Use the passport
+agent = Agent(passport_id=passport.passport_id, private_key=passport.private_key)
+decision = agent.authorize("web:search")
+```
+
+### Autonomous Credential Rotation
+
+```python
+import os
+from datetime import datetime, timedelta
+from uniplex import Agent, UniplexClient
+
+client = UniplexClient(api_key=os.environ["UNIPLEX_API_KEY"])
+agent = Agent.from_env()
+
+async def check_and_rotate():
+    """Call this periodically (e.g., daily cron job)."""
+    days_until_expiry = (agent.expires_at - datetime.utcnow()).days
+    
+    if days_until_expiry <= 7:
+        print(f"Rotating credentials ({days_until_expiry} days until expiry)")
+        
+        # Issue new passport
+        new_passport = client.passports.issue(
+            agent_id=agent.agent_id,
+            permissions=agent.permissions,
+            issuer_id=agent.issuer_id,
+            expires_in="90d"
+        )
+        
+        # Update secrets manager
+        update_secret("UNIPLEX_PASSPORT_KEY", new_passport.private_key)
+        
+        # Revoke old passport
+        client.passports.revoke(agent.passport_id)
+        
+        print(f"Rotated: {agent.passport_id} → {new_passport.passport_id}")
+```
+
+---
+
+## Path C: MCP Server with OAuth
+
+For agents that interact with Claude, the MCP server provides a fully autonomous path. The agent can instruct Claude to manage its own Supravisor configuration through conversation.
+
+```bash
+# Start the MCP server (human does this once)
+npx uniplex-mcp-manage
+
+# Agent can then instruct Claude:
+# "Check my passport expiry and rotate if needed"
+# "Issue a passport for the new worker agent"
+# "Show me any denials from the last hour"
+```
+
+See the [MCP Server guide](/guides/mcp-server) for the complete tool list.
+
+---
+
+## Agent-to-Agent Trust
+
+When one agent needs to verify another agent's identity and permissions, Supravisor provides the infrastructure.
+
+```python
+from uniplex import Gate, TrustProfile
+
+# Agent B verifies Agent A's passport before accepting work
+verifier_gate = Gate(
+    profile=TrustProfile.L2,
+    trusted_issuers=["issuer:mycompany.ai"]
+)
+
+# Agent A sends its passport token in the request
+def handle_work_request(request: dict):
+    passport_token = request.get("agent_passport")
+    
+    if not passport_token:
+        return {"error": "No agent passport provided"}, 401
+    
+    # Verify Agent A is who they claim to be
+    verification = verifier_gate.verify(passport_token)
+    
+    if not verification.valid:
+        return {"error": "Invalid agent passport"}, 403
+    
+    # Check Agent A has permission to request this work type
+    decision = verifier_gate.authorize(passport_token, f"tasks:{request['task_type']}")
+    
+    if not decision.allowed:
+        return {"error": f"Agent not authorized for this task: {decision.reason}"}, 403
+    
+    # Process the work
+    return process_work(request, agent_id=verification.agent_id)
+```
+
+This pattern enables **federated multi-agent systems** where agents from different organizations can verify each other's credentials before exchanging data or delegating work.
+
+---
+
+## Reading and Acting on Your Own Audit Trail
+
+Agents can read their own audit trail to understand their performance, detect issues, and adapt:
+
+```python
+from uniplex import UniplexClient
+
+client = UniplexClient(api_key=os.environ["UNIPLEX_API_KEY"])
+
+# Read recent decisions
+attestations = client.audit_trail.list(
+    agent_id="autonomous-agent-001",
+    limit=100
+)
+
+# Analyze denial patterns
+denials = [a for a in attestations if a.decision == "deny"]
+denial_reasons = {}
+for denial in denials:
+    reason_type = denial.constraints_evaluated[0]["type"] if denial.constraints_evaluated else "unknown"
+    denial_reasons[reason_type] = denial_reasons.get(reason_type, 0) + 1
+
+if denial_reasons.get("max_per_day", 0) > 5:
+    # Agent is hitting daily limits — slow down
+    print("Warning: Hitting daily spend limits frequently")
+    adjust_request_rate(0.5)  # Slow down by 50%
+
+if denial_reasons.get("domain_blocklist", 0) > 0:
+    # Agent tried to access blocked domains — log for human review
+    alert_human("Agent attempted blocked domain access", denials)
+```
+
+---
+
+## The Future: Agent-Native Signup
+
+Today, a human must create the initial Supravisor account. We're building toward agent-native signup: programmatic account creation with payment, where an agent can bootstrap its own trust infrastructure autonomously.
+
+The future flow:
+
+```python
+# Coming soon: agent creates its own account
+from uniplex import UniplexClient
+
+client = UniplexClient.create_account(
+    agent_id="bootstrapping-agent",
+    payment_method="crypto_wallet_address",  # Agent pays for its own account
+    plan="starter"
+)
+# Returns a funded account with API key — no human required
+```
+
+Until then, Path B (API key from a human-created account) is the recommended approach for production autonomous agents.
+
+---
+
+## Security Considerations for Autonomous Agents
+
+<Warning>
+  Autonomous agents with credential management capabilities must be secured carefully. Compromise of the `UNIPLEX_API_KEY` allows issuing arbitrary passports. Use minimal scopes and rotate regularly.
+</Warning>
+
+**Best practices:**
+
+1. **Minimal API key scopes** — Use `passports:issue` + `passports:revoke` only; don't give agents `admin:*`
+2. **Secrets manager, not env files** — Store `UNIPLEX_API_KEY` in AWS Secrets Manager, Vault, or equivalent — not in `.env` files
+3. **Monitor anomalies** — Set up alerts for unusual denial patterns or unexpected passport issuance
+4. **Time-limited passports** — 30–90 day expiry forces regular rotation
+5. **Audit trail review** — Have a human review the audit trail weekly, even for autonomous systems
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="MCP Server" href="/guides/mcp-server" icon="server">
+    21 tools for autonomous agent management via Claude.
+  </Card>
+  <Card title="Audit Trail" href="/guides/audit-trail" icon="file-lines">
+    Read and act on your agent's decision history.
+  </Card>
+  <Card title="Trust Profiles" href="/concepts/trust-profiles" icon="layers">
+    Choose the right security level for autonomous agents.
+  </Card>
+</CardGroup>

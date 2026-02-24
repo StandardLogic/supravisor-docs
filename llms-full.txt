@@ -1,0 +1,711 @@
+========================================================================
+SUPRAVISOR — FULL DOCUMENTATION
+Powered by the open Uniplex protocol
+Last updated: 2026-02-24
+API: https://uniplex.ai/api
+Docs: https://docs.uniplex.ai
+========================================================================
+
+OVERVIEW
+--------
+Supravisor is the trust layer for AI agents. It answers three fundamental questions about any AI agent operating in your systems:
+
+1. Who is this agent? (Identity via Passports)
+2. What is it allowed to do? (Policy via Gates and Guardrails)
+3. What did it actually do? (Audit via Attestations)
+
+Every AI agent — Claude, GPT-4, a custom Python script, an AutoGen workflow — can be issued a cryptographic passport, evaluated against a set of constraints before each action, and have every decision recorded in a tamper-proof audit trail.
+
+Supravisor is built on the open Uniplex protocol. The cryptography (Ed25519 signatures) is standard and independently verifiable. You are never locked into trusting Supravisor's word — every attestation can be verified offline using the gate's public key.
+
+========================================================================
+SECTION 1: CORE CONCEPTS
+========================================================================
+
+ISSUERS
+-------
+An issuer is the signing authority in Supravisor's trust chain. Think of it as a certificate authority, but purpose-built for AI agent credentials rather than TLS.
+
+Every passport must be signed by an issuer. Gates verify passports by checking whether the signing issuer is in their trusted list. This means trust is explicit: you configure which issuers you trust, and only credentials from those issuers are accepted.
+
+Issuer ID format: issuer:yourdomain.ai (or issuer:personal.local for dev)
+
+Trust tiers:
+- Self (L1): Anyone can create a self-issued passport. For development only.
+- Internal (L2): Issued through your Supravisor account. For production.
+- Verified (coming): Domain-verified via DNS/HTTPS challenge. Cross-org trust.
+- Certified (coming): KYB-verified for regulated industries.
+
+The Ed25519 keypair is generated in the browser (client-side). The private key is shown once and never stored by Supravisor. Only the holder of the private key can sign valid passports — even if Supravisor's servers were compromised, forging passports would be cryptographically impossible.
+
+One issuer can sign many passports. Revoking an issuer immediately invalidates all passports it signed.
+
+PASSPORTS
+---------
+A passport is a signed JSON credential that an AI agent carries to prove its identity and permissions. It has two components: a payload (the claims) and a signature (the proof).
+
+Example passport structure:
+{
+  "payload": {
+    "passport_id": "uni_abc123",
+    "agent_id": "my-research-agent",
+    "agent_name": "Research Bot",
+    "issuer_id": "issuer:mycompany.ai",
+    "permissions": ["web:search", "mcp:read"],
+    "public_key": "base64_ed25519_public_key...",
+    "issued_at": "2026-02-24T00:00:00Z",
+    "expires_at": "2027-02-24T00:00:00Z"
+  },
+  "signature": "Ed25519-base64_signature_over_payload..."
+}
+
+Permission namespaces:
+- mcp:* — MCP tool calls (mcp:read, mcp:write, mcp:search)
+- web:* — Web browsing (web:search, web:read, web:fetch)
+- email:* — Email operations (email:read, email:send, email:delete)
+- files:* — File system (files:read, files:write, files:delete)
+- payments:* — Payment operations (payments:read, payments:send)
+- api:* — Generic API calls (api:read, api:write, api:admin)
+- tools:* — Tool use (tools:search, tools:execute)
+- * — Full access (use with extreme caution)
+
+Private keys:
+The agent's private key is generated in the browser when a passport is issued. It's shown exactly once. The standard environment variable is UNIPLEX_PASSPORT_KEY. This key is used for proof-of-possession at L3.
+
+Self-issued L1 passports (no account needed):
+  from uniplex import Agent
+  agent = Agent.create("my-agent", permissions=["mcp:*"])
+
+Loading from environment:
+  agent = Agent.from_env()  # reads UNIPLEX_PASSPORT_KEY
+
+Passports expire at their expires_at timestamp. Recommended TTLs: 365d (dev), 90d (production), 30d (high-security). Revocation is instant — revoked passports are rejected at every gate check regardless of expiry.
+
+GATES
+-----
+A gate is the local enforcement checkpoint between an agent and a resource. Every action request goes through a gate:
+1. Parse the passport token
+2. Verify the Ed25519 signature
+3. Check the issuer is trusted
+4. Check the passport isn't expired
+5. Check the passport isn't revoked (L2: cached; L3: live)
+6. Verify permissions include the requested action
+7. Evaluate all configured guardrail constraints
+8. Sign and store an attestation record
+9. Return allow/deny with reason
+
+Step 7 (constraint evaluation) happens locally with no network call. This is why gates add under 1ms to the request path regardless of network conditions.
+
+Gate configuration:
+- trusted_issuers: list of issuer IDs to accept
+- profile: L1, L2, or L3
+- constraints: the guardrail configuration (see below)
+- required_permissions: passport must include these
+
+Decision outcomes always include:
+- allowed: boolean
+- reason: human-readable explanation (always present)
+- attestation_id: ID of the signed record
+
+GUARDRAILS
+----------
+Guardrails are the 17 constraint evaluators that govern how agents operate beyond simple permissions.
+
+Permissions are binary: can/can't. Guardrails are continuous: up to $50/day, max 10/minute, only these domains, never delete files.
+
+All 17 constraint types:
+
+1. max_per_action — Spending cap per single call — "$5.00"
+2. max_per_minute — Rate limit actions per minute — "10"
+3. max_per_hour — Rate limit actions per hour — "100"
+4. max_per_day — Daily spending cap — "$50.00"
+5. max_cumulative — Lifetime cumulative spend cap — "$500.00"
+6. cumulative_window — Rolling window for cumulative tracking — "30d"
+7. approval_threshold — Human approval required above this — "$25.00"
+8. domain_allowlist — Only allow these domains — "openai.com,anthropic.com"
+9. domain_blocklist — Always block these domains — "facebook.com,twitter.com"
+10. action_allowlist — Only these specific actions permitted — "web:search,mcp:read"
+11. action_blocklist — These actions always denied — "files:delete,payments:send"
+12. read_only — Block all write/mutate operations — true/false
+13. no_pii_export — Detect and block PII in payloads — true/false
+14. required — Request must include this metadata field — "user_id"
+15. model — Require a specific AI model — "claude-3-5-sonnet"
+16. response_time_ms — SLA latency requirement — "2000"
+17. uptime_basis_points — SLA uptime — "9900" (99%)
+
+Evaluation order: signature → expiry → revocation → issuer trust → permission → action_blocklist → action_allowlist → domain_blocklist → domain_allowlist → read_only → required → model → no_pii_export → max_per_action → rate limits → spend limits → approval_threshold
+
+All constraints are AND-evaluated. The first failure stops evaluation and returns a denial with the specific reason.
+
+TRUST PROFILES
+--------------
+L1 — Baseline:
+- Accepts self-issued passports (no account needed)
+- Verifies signature and expiry
+- Does NOT check issuer trust
+- Does NOT protect against replay attacks
+- Does NOT check revocation
+- Use for: local development, prototyping, quick experiments
+- Warning: Never use L1 in production
+
+L2 — Standard:
+- Requires issuer in trusted list
+- Nonce-based replay attack protection
+- Cached revocation check (60s TTL)
+- No network call for authorization (cached revocation only)
+- Use for: all production agents, external-facing services, team deployments
+
+L3 — Strict:
+- Everything L2 checks, plus:
+- Proof-of-Possession: agent must sign {passport_id}:{nonce}:{timestamp} with its private key
+- Live revocation check on every request (adds ~10-50ms)
+- Timestamp must be within 30 seconds
+- Use for: financial agents, healthcare, payroll, anything high-stakes
+
+ATTESTATIONS
+------------
+An attestation is a signed, immutable record of every gate decision. It is signed by the gate's Ed25519 private key at the moment of decision. The signature covers the entire document — any field modification breaks the signature.
+
+Full attestation structure:
+{
+  "attestation_id": "att_xyz789",
+  "decision": "allow",
+  "reason": "All constraints satisfied",
+  "passport_id": "uni_abc123",
+  "agent_id": "my-research-agent",
+  "gate_id": "gate_def456",
+  "action": "mcp:search",
+  "resource": "web:google",
+  "timestamp": "2026-02-24T10:30:00Z",
+  "trust_profile": "L2",
+  "constraints_evaluated": [
+    {"type": "max_per_day", "value": "$50", "current": "$12.40", "result": "pass"}
+  ],
+  "gate_signature": "Ed25519-base64..."
+}
+
+Attestations cannot be altered. They can be shared via public URLs that show the decision without exposing sensitive configuration. They can be exported as JSON or CSV for compliance audits. The gate's public key (available from the dashboard) can be used for offline signature verification.
+
+========================================================================
+SECTION 2: SDKS
+========================================================================
+
+PYTHON SDK
+----------
+Install: pip install uniplex
+Requires: Python 3.8+
+
+Quick start:
+  from uniplex import Agent, Gate, TrustProfile
+  agent = Agent.from_env()
+  gate = Gate(profile=TrustProfile.L2, trusted_issuers=["issuer:mycompany.ai"])
+  token = agent.generate_token()
+  decision = gate.authorize(token, "web:search")
+  if decision.allowed:
+      print(f"Authorized! Attestation: {decision.attestation_id}")
+
+Agent class:
+  Agent.create(agent_id, permissions, issuer_id=None) → Agent (self-issued L1)
+  Agent(passport_id, private_key) → Agent (load existing)
+  Agent.from_env() → Agent (reads UNIPLEX_PASSPORT_KEY)
+  Agent.from_json(json_str) → Agent
+  agent.authorize(action, resource=None, metadata=None) → Decision
+  agent.generate_token(nonce=None, metadata=None) → str
+  agent.passport_id → str
+  agent.agent_id → str
+  agent.permissions → list[str]
+  agent.expires_at → datetime
+  agent.issuer_id → str
+
+Gate class:
+  Gate(profile, trusted_issuers=None, constraints=None, gate_id=None)
+  gate.authorize(passport_token, action, resource=None, metadata=None) → Decision
+  gate.verify(passport_token) → VerificationResult
+
+Decision class:
+  decision.allowed → bool
+  decision.reason → str
+  decision.attestation_id → str | None
+  decision.constraints_evaluated → list[dict]
+
+Environment variables:
+  UNIPLEX_PASSPORT_KEY — Agent's Ed25519 private key (base64)
+  UNIPLEX_API_KEY — API key (uni_xxxx) for managed platform
+  UNIPLEX_GATE_ID — Default gate for agent.authorize()
+
+Error types:
+  PassportExpiredError — passport past expires_at
+  PassportRevokedError — passport was manually revoked
+  InsufficientPermissionsError — passport lacks required permission
+  RateLimitExceededError — max_per_minute or max_per_hour exceeded (.retry_after_seconds)
+  SpendingLimitExceededError — max_per_day, max_per_action, or max_cumulative exceeded
+  UniplexError — base class for all Supravisor errors
+
+TYPESCRIPT / NODE.JS SDK
+------------------------
+Install: npm install uniplex
+Requires: Node.js 18+, TypeScript 4.9+
+
+Quick start:
+  import { Agent, Gate, TrustProfile } from 'uniplex';
+  const agent = await Agent.fromEnv();
+  const gate = new Gate({ profile: TrustProfile.L2, trustedIssuers: ['issuer:mycompany.ai'] });
+  const token = agent.generateToken();
+  const decision = await gate.authorize(token, 'web:search');
+
+Key interfaces:
+  interface Decision {
+    allowed: boolean;
+    reason: string;
+    attestationId: string | null;
+    constraintsEvaluated: ConstraintResult[];
+    checkedAt: Date;
+  }
+
+  interface ConstraintResult {
+    type: string;
+    value: string;
+    current: string;
+    result: 'pass' | 'fail';
+    detail: string;
+  }
+
+Agent class (TypeScript):
+  Agent.create(agentId, { permissions, expiresIn?, agentName?, issuerId? }) → Promise<Agent>
+  new Agent({ passportId, privateKey }) → Agent
+  Agent.fromEnv() → Promise<Agent>
+  Agent.fromJSON(json) → Agent
+  agent.authorize(action, options?) → Promise<Decision>
+  agent.generateToken(options?) → string
+  agent.passportId → string
+  agent.permissions → string[]
+  agent.expiresAt → Date
+
+Gate class (TypeScript):
+  new Gate({ profile, trustedIssuers?, constraints?, gateId?, apiKey? })
+  gate.authorize(passportToken, action, options?) → Promise<Decision>
+  gate.verify(passportToken) → Promise<VerificationResult>
+
+Constraints interface (TypeScript):
+  maxPerAction?: string         // "$5.00"
+  maxPerMinute?: number         // 10
+  maxPerHour?: number           // 100
+  maxPerDay?: string            // "$50.00"
+  maxCumulative?: string        // "$500.00"
+  cumulativeWindow?: string     // "30d"
+  approvalThreshold?: string    // "$25.00"
+  domainAllowlist?: string      // "openai.com,anthropic.com"
+  domainBlocklist?: string      // "facebook.com,twitter.com"
+  actionAllowlist?: string[]    // ["web:search", "mcp:read"]
+  actionBlocklist?: string[]    // ["files:delete", "payments:send"]
+  readOnly?: boolean            // true
+  noPiiExport?: boolean         // true
+  required?: string             // "user_id"
+  model?: string                // "claude-3-5-sonnet"
+  responseTimeMs?: number       // 2000
+  uptimeBasisPoints?: number    // 9900
+
+========================================================================
+SECTION 3: MCP SERVER
+========================================================================
+
+The Supravisor MCP server exposes 21 tools via Streamable HTTP transport with OAuth 2.0 PKCE authentication. Any MCP-compatible AI client (Claude, Claude Code) can manage the entire Supravisor platform through natural language.
+
+Installation: npx uniplex-mcp-manage
+
+First run: opens browser for OAuth 2.0 PKCE authorization (one time). Token stored at ~/.uniplex/mcp-token.json. Tokens valid 30 days, auto-refresh.
+
+Claude Desktop config:
+  {
+    "mcpServers": {
+      "supravisor": {
+        "command": "npx",
+        "args": ["uniplex-mcp-manage"],
+        "env": { "UNIPLEX_API_KEY": "uni_xxxx" }
+      }
+    }
+  }
+
+All 21 tools:
+
+Issuer Management (5):
+  create_issuer — Create a new signing authority
+  list_issuers — List all issuers with trust tier and status
+  get_issuer — Get full details of a specific issuer
+  update_issuer — Update issuer name or description
+  revoke_issuer — Revoke an issuer and all its passports
+
+Passport Management (4):
+  issue_passport — Issue a new passport for an agent
+  list_passports — List passports with optional filters
+  get_passport — Get passport details
+  revoke_passport — Revoke a passport immediately
+
+Gate Management (5):
+  create_gate — Create a new enforcement gate
+  list_gates — List all gates with configurations
+  get_gate — Get full gate config including constraints
+  update_gate — Update gate configuration
+  delete_gate — Delete a gate
+
+Authorization (2):
+  check_authorization — Check if a passport is authorized for an action
+  verify_passport — Verify passport signature and validity
+
+Attestations (3):
+  list_attestations — List attestations with filters
+  get_attestation — Get single attestation with full detail
+  export_attestations — Export as JSON or CSV
+
+Templates (2):
+  list_templates — List all available constraint templates
+  apply_template — Apply a template to a gate
+
+Example Claude prompts:
+  "Issue a passport for my research agent with web:search permissions, expiring in 90 days"
+  "What gates do I have and which issuers do they trust?"
+  "Show me the last 10 authorization decisions for my agent"
+  "Apply the Read-Only Researcher template to my research gate"
+  "Rotate the passport for agent research-bot before it expires next week"
+  "Export all denials from last month as CSV"
+
+========================================================================
+SECTION 4: API REFERENCE
+========================================================================
+
+BASE URL: https://uniplex.ai/api
+
+AUTHENTICATION:
+  Header: Authorization: Bearer uni_xxxx
+  Format: uni_ prefix + 64 lowercase hex chars = 68 chars total
+
+RATE LIMITS:
+  Authorization checks: 100/min
+  Passport creation: 30/min
+  Gate creation: 10/min
+  All other: 60/min
+  Headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+
+ERROR FORMAT: {"error": "message", "code": "ERROR_CODE"}
+
+SCOPES:
+  gates:create, gates:read, gates:update, gates:delete, gates:manage
+  passports:issue, passports:read, passports:revoke
+  issuers:create, issuers:read, issuers:update
+  guardrails:create, guardrails:read, guardrails:update
+  templates:create, templates:read, templates:update
+  audit:read, audit:export, audit:share
+  osgate:read, osgate:write, osgate:manage
+  admin:*
+
+ENDPOINTS:
+
+POST /api/authorize — Check authorization (CORE ENDPOINT)
+  Request: { passport_token, action, resource?, gate_id?, metadata? }
+  Response: { allowed, reason, attestation_id, checked_at, constraints_evaluated }
+  Scope: any valid API key
+
+POST /api/passports — Issue passport
+  Request: { agent_id, agent_name, issuer_id, permissions, expires_in? }
+  Response: { passport_id, private_key (ONCE), passport_token, ... }
+  Scope: passports:issue
+
+GET /api/passports — List passports
+  Params: agent_id, issuer_id, status, expiring_before, limit, offset
+  Scope: passports:read
+
+GET /api/passports/:id — Get passport
+  Scope: passports:read
+
+DELETE /api/passports/:id — Revoke passport
+  Response: { passport_id, status: "revoked", revoked_at }
+  Scope: passports:revoke
+
+POST /api/issuers — Create issuer
+  Request: { name, issuer_id, description?, public_key? }
+  Response: { issuer_id, private_key (ONCE), public_key, ... }
+  Scope: issuers:create
+
+GET /api/issuers — List issuers
+  Scope: issuers:read
+
+GET /api/issuers/:id — Get issuer
+  Scope: issuers:read
+
+PUT /api/issuers/:id — Update issuer
+  Scope: issuers:update
+
+DELETE /api/issuers/:id — Revoke issuer (invalidates ALL passports)
+  Scope: issuers:update
+
+POST /api/gates — Create gate
+  Request: { name, profile, trusted_issuers?, constraints?, template? }
+  Response: { gate_id, public_key (for attestation verification), ... }
+  Scope: gates:create
+
+GET /api/gates — List gates
+  Scope: gates:read
+
+GET /api/gates/:id — Get gate
+  Scope: gates:read
+
+PUT /api/gates/:id — Update gate
+  Scope: gates:update
+
+DELETE /api/gates/:id — Delete gate
+  Scope: gates:delete
+
+GET /api/gates/:id/public-key — Get gate's public key for offline attestation verification
+  Scope: gates:read
+
+POST /api/guardrails — Create guardrail config
+  Scope: guardrails:create
+
+GET /api/guardrails — List guardrail configs
+  Scope: guardrails:read
+
+GET /api/guardrails/:id — Get guardrail config
+  Scope: guardrails:read
+
+PUT /api/guardrails/:id — Update guardrail config
+  Scope: guardrails:update
+
+POST /api/guardrails/:id/apply — Apply to gates
+  Scope: guardrails:update, gates:update
+
+POST /api/guardrails/validate — Validate a constraint config (no scope required)
+
+GET /api/audit-trail — List attestations
+  Params: agent_id, gate_id, passport_id, decision, action, from, to, limit, offset, sort
+  Scope: audit:read
+
+GET /api/audit-trail/:id — Get single attestation (full detail)
+  Scope: audit:read
+
+POST /api/audit-trail/:id/share — Create public share link
+  Request: { expires_in? }
+  Response: { share_url, expires_at }
+  Scope: audit:share
+
+GET /api/audit-trail/export — Export as JSON or CSV
+  Params: format (json|csv), include_constraints, + filter params
+  Scope: audit:export
+
+GET /api/audit-trail/stats — Aggregate statistics
+  Scope: audit:read
+
+COMMON ERROR CODES:
+  UNAUTHORIZED (401) — Missing or invalid API key
+  FORBIDDEN (403) — API key lacks required scope
+  NOT_FOUND (404) — Resource does not exist
+  VALIDATION_ERROR (422) — Request body failed validation
+  RATE_LIMITED (429) — Rate limit exceeded (check Retry-After header)
+  PASSPORT_EXPIRED (400) — Passport past expires_at
+  PASSPORT_REVOKED (400) — Passport was revoked
+  ISSUER_NOT_TRUSTED (403) — Passport issuer not in gate's trusted list
+  PERMISSION_DENIED (403) — Passport lacks required permission
+  CONSTRAINT_VIOLATION (403) — Guardrail constraint blocked the action
+  SIGNATURE_INVALID (400) — Passport or token signature is invalid
+  INTERNAL_ERROR (500) — Unexpected server error
+
+========================================================================
+SECTION 5: INTEGRATION GUIDES
+========================================================================
+
+PROTECTING CLAUDE AND CLAUDE CODE
+----------------------------------
+Claude is powerful — and that's exactly why it needs guardrails. A Claude session with file system access can read, write, and delete files. Claude Code can run arbitrary shell commands. Without Supravisor, there's no audit trail and no enforcement.
+
+Option A: Python SDK (for custom Claude tooling):
+  Wrap tool calls with gate.authorize() before execution. If the decision is not allowed, return the error to Claude rather than executing the tool.
+
+Option B: MCP Server (recommended):
+  Run: npx uniplex-mcp-manage
+  Add to Claude settings → MCP Servers → add Supravisor
+  Set UNIPLEX_PASSPORT_KEY and UNIPLEX_GATE_ID in Claude's environment
+
+Setting environment variables for Claude Code:
+  export UNIPLEX_PASSPORT_KEY="ed25519_private_key_here"
+  export UNIPLEX_GATE_ID="gate_def456"
+  
+  Or in project .env:
+  UNIPLEX_PASSPORT_KEY=ed25519_private_key_here
+  UNIPLEX_GATE_ID=gate_def456
+
+Troubleshooting Claude denials:
+  "Domain not in allowlist" → add domain to gate's domain_allowlist
+  "Spending limit exceeded" → increase max_per_day or wait until tomorrow
+  "Rate limit exceeded" → increase max_per_minute
+  "Passport expired" → issue new passport, update UNIPLEX_PASSPORT_KEY
+  "Issuer not trusted" → add issuer to gate's trusted_issuers
+
+PROTECTING OPENAI AGENTS
+-------------------------
+The core pattern for OpenAI Agents SDK — check authorization before executing any tool:
+
+  from uniplex import Agent
+  agent = Agent.from_env()
+  
+  def safe_tool_call(tool_name: str, fn, **kwargs):
+      decision = agent.authorize(f"tools:{tool_name}")
+      if not decision.allowed:
+          raise PermissionError(f"Blocked: {decision.reason}")
+      return fn(**kwargs)
+
+For the Assistants API: in the required_action loop, call gate.authorize() before execute tool, and submit the denial as the tool output if not allowed.
+
+Common patterns:
+  Spend-limited GPT: { max_per_action: "$2.00", max_per_day: "$25.00", approval_threshold: "$10.00" }
+  Read-only researcher: { read_only: true, domain_allowlist: "arxiv.org,..," }
+  Rate-limited support: { max_per_minute: 5, action_allowlist: ["email:read", "email:send", "tools:search_kb"] }
+
+AGENT AUTONOMY
+--------------
+The bootstrap problem: a human must set up the trust infrastructure exactly once. After that, agents operate autonomously.
+
+Human does once:
+  1. Create Supravisor account
+  2. Generate API key → store in secrets manager
+  3. Create issuer → store issuer private key
+  4. Configure gates
+
+Agent does ongoing:
+  - Issue sub-agent passports (using UNIPLEX_API_KEY)
+  - Rotate credentials before expiry
+  - Verify other agents' passports
+  - Read own audit trail
+  - Configure gates (if given gates:update scope)
+
+Path A — Self-issued L1 (no account):
+  from uniplex import Agent
+  agent = Agent.create("my-agent", permissions=["mcp:*"])
+  decision = agent.authorize("mcp:search")
+
+Path B — Managed platform (recommended for production):
+  from uniplex import UniplexClient
+  client = UniplexClient(api_key=os.environ["UNIPLEX_API_KEY"])
+  passport = client.passports.issue(agent_id="worker-001", permissions=["web:search"], expires_in="90d")
+
+Path C — MCP server with OAuth (for Claude):
+  npx uniplex-mcp-manage  # agent instructs Claude to manage credentials
+
+Agent-to-agent trust: use gate.verify(token) to verify another agent's passport before accepting work from it.
+
+Autonomous credential rotation:
+  Check (agent.expires_at - now).days < 7, then call client.passports.issue() for a new passport, update secrets manager, call client.passports.revoke(old_id).
+
+AUDIT TRAIL AND SESSION SHARING
+---------------------------------
+Every gate decision is in the audit trail as a signed attestation.
+
+Dashboard: Activity tab (real-time stream) vs Audit Trail tab (full queryable history).
+
+API query:
+  GET /api/audit-trail?agent_id=my-agent&decision=deny&limit=50
+  Headers: Authorization: Bearer uni_xxxx
+
+Sharing: POST /api/audit-trail/:id/share → returns share_url
+  Public URL shows: decision, action, timestamp, constraints (pass/fail), signature
+  Public URL hides: API keys, gate internals, issuer private keys
+
+Export: GET /api/audit-trail/export?format=csv&from=2026-01-01
+
+Offline verification (Python):
+  signature = base64.b64decode(attestation.pop("gate_signature"))
+  payload = json.dumps(attestation, sort_keys=True, separators=(',',':')).encode()
+  Ed25519PublicKey.from_public_bytes(base64.b64decode(gate_pub_key)).verify(signature, payload)
+
+Use cases: compliance audits (export signed JSON for auditors), client reporting (share URLs), debugging (find denial + read constraints_evaluated), dispute resolution, billing verification.
+
+========================================================================
+SECTION 6: CONSTRAINT TEMPLATES
+========================================================================
+
+30 pre-built constraint configurations across 5 categories. Apply via dashboard → Gates → Create Gate → Choose Template. Or via API with "template": "template-name" in the gate creation request.
+
+PERSONAL PRODUCTIVITY (6):
+  personal-email-agent — 50/day, no delete, no bulk PII export
+  calendar-manager — 20/day create/update, no delete
+  file-organizer — read/move/rename only, no delete, no external sharing
+  note-taking-agent — create/edit notes, sensitive folders read-only
+  task-manager — create/update/complete, no delete
+  personal-shopper — $500/action cap, $100 approval threshold
+
+BUSINESS OPERATIONS (6):
+  customer-support-agent — KB + ticket read/respond, escalate on keywords
+  sales-development-agent — research + draft, no autonomous email send
+  contract-review-agent — read-only PDFs/docs, no external AI upload
+  hr-onboarding-agent — template emails only, no SSN/salary fields
+  expense-report-agent — read receipts + create records, no payment execution
+  meeting-scheduler — calendar R/W, limited external invites
+
+DEVELOPER TOOLS (6):
+  code-review-agent — git read + PR comments, no push/merge
+  cicd-agent — trigger test pipelines, read logs, no config changes
+  documentation-generator — read code + write docs, no code changes
+  bug-triage-agent — read + label + assign, no close/delete
+  security-scanner — read-only codebase, flag CVEs, no auto-fix
+  dependency-auditor — npm/pip audit read-only, report only
+
+FINANCE & COMMERCE (6):
+  budget-tracker — read-only transactions + reports
+  invoice-processor — read + record, $1000 approval threshold, no payments
+  financial-research-agent — read-only market data, no trades
+  crypto-trading-agent — L3, $100/trade, $500/day, $50 approval, full audit
+  payroll-assistant — L3, no SSN export, all actions require approval
+  subscription-manager — cancel with approval, no new subscriptions
+
+RESEARCH & CONTENT (6):
+  web-research-agent — search + read, configurable domain allowlist
+  content-writer — draft only, no publish
+  social-media-manager — 10 posts/day, no delete
+  data-analyst — read + aggregate, no raw PII export
+  market-research-agent — public web only, no internal data
+  competitive-intelligence-agent — public web only, no logins
+
+========================================================================
+SECTION 7: QUICK REFERENCE
+========================================================================
+
+ENVIRONMENT VARIABLES:
+  UNIPLEX_PASSPORT_KEY — Agent's private key (base64 Ed25519)
+  UNIPLEX_API_KEY — API key (uni_xxxx) for managed operations
+  UNIPLEX_GATE_ID — Default gate ID for agent.authorize()
+  UNIPLEX_ISSUER_PRIVATE_KEY — Issuer's signing key for passport issuance
+
+TRUST PROFILE DECISION GUIDE:
+  Development / prototyping → L1
+  Financial / healthcare / high-stakes → L3
+  Everything else production → L2
+
+PERMISSION GRANT BEST PRACTICES:
+  - Never grant * in production
+  - Use specific namespaces (web:search not web:*)
+  - Add action_blocklist as defense-in-depth
+  - Review permissions when rotating credentials
+
+GATE CONSTRAINTS QUICK PATTERNS:
+  Read-only research: { read_only: true, domain_allowlist: "...", no_pii_export: true }
+  Spend-limited: { max_per_action: "$5", max_per_day: "$50", approval_threshold: "$25" }
+  Rate-limited: { max_per_minute: 10, max_per_hour: 100 }
+  Social media blocked: { domain_blocklist: "facebook.com,twitter.com,instagram.com" }
+  Files no delete: { action_blocklist: ["files:delete", "files:move"] }
+
+ATTESTATION FACT SHEET:
+  - Signed by gate's Ed25519 private key at decision time
+  - Cannot be altered after creation (signature breaks)
+  - Always includes decision, reason, constraints_evaluated
+  - Public share URL available (shows result, hides internals)
+  - Exportable as JSON or CSV
+  - Independently verifiable with gate's public key
+
+CONTACT / LINKS:
+  Docs: https://docs.uniplex.ai
+  API: https://uniplex.ai/api
+  Dashboard: https://uniplex.ai
+  GitHub: https://github.com/StandardLogic/supravisor-docs
+  Protocol: https://uniplex.ai/protocol
+
+========================================================================
+END OF SUPRAVISOR FULL DOCUMENTATION
+========================================================================

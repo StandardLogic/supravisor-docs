@@ -1,0 +1,126 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Supravisor",
+  "logo": {
+    "dark": "/logo/supravisor-dark.svg",
+    "light": "/logo/supravisor-light.svg",
+    "href": "https://supravisor.ai"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#00d9ff",
+    "light": "#00b6f1",
+    "dark": "#00b6f1",
+    "anchors": {
+      "from": "#00d9ff",
+      "to": "#00b6f1"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Dashboard",
+      "url": "https://uniplex.ai/dashboard"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get Started Free",
+    "url": "https://uniplex.ai/signup"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/uniplexprotocol/uniplex"
+    },
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://discord.gg/standardlogic"
+    },
+    {
+      "name": "Support",
+      "icon": "envelope",
+      "url": "mailto:support@uniplex.ai"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "for-humans"
+      ]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": [
+        "concepts/issuers",
+        "concepts/passports",
+        "concepts/gates",
+        "concepts/guardrails",
+        "concepts/trust-profiles",
+        "concepts/attestations"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/protect-claude",
+        "guides/protect-openai",
+        "guides/mcp-server",
+        "guides/agent-autonomy",
+        "guides/custom-constraints",
+        "guides/audit-trail"
+      ]
+    },
+    {
+      "group": "SDK Reference",
+      "pages": [
+        "sdk/python",
+        "sdk/typescript"
+      ]
+    },
+    {
+      "group": "Templates",
+      "pages": [
+        "templates/overview",
+        "templates/personal-productivity",
+        "templates/business-operations",
+        "templates/developer-tools",
+        "templates/finance-commerce",
+        "templates/research-content"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/authentication",
+        "api-reference/issuers",
+        "api-reference/passports",
+        "api-reference/gates",
+        "api-reference/guardrails",
+        "api-reference/audit-trail"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "twitter": "https://twitter.com/SupravisorAI",
+    "github": "https://github.com/StandardLogic",
+    "linkedin": "https://linkedin.com/company/standardlogic"
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true,
+    "raiseIssue": true
+  },
+  "search": {
+    "prompt": "Ask anything about Supravisor..."
+  }
+}

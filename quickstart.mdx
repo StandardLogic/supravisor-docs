@@ -1,0 +1,152 @@
+---
+title: "Quickstart"
+description: "From zero to a verified, policy-enforced AI agent in 5 minutes."
+---
+
+## Prerequisites
+
+- Python 3.8+ or Node.js 18+
+- A [Supravisor account](https://uniplex.ai/signup) (free)
+
+## Step 1: Install the SDK
+
+<CodeGroup>
+```bash Python
+pip install uniplex
+```
+```bash TypeScript
+npm install uniplex
+```
+</CodeGroup>
+
+## Step 2: Create an Issuer
+
+An Issuer is your signing authority — the identity that vouches for your agents.
+
+1. Go to your [dashboard](https://uniplex.ai/dashboard)
+2. Click **Issuers** in the left sidebar
+3. Click **Create Issuer**
+4. Enter a name (e.g. "My Agents") and a domain (e.g. `mycompany.ai`)
+5. Click **Create** — your keypair is generated client-side
+
+<Note>
+Your issuer's private key is generated in your browser and **never sent to Supravisor**. Keep it safe.
+</Note>
+
+## Step 3: Issue a Passport
+
+A Passport is your agent's cryptographic identity document.
+
+1. In the dashboard, click **Passports** → **Issue Passport**
+2. Select your issuer
+3. Set an Agent ID (e.g. `research-agent-001`) and name
+4. Choose permissions (e.g. `mcp:*` for MCP tools, `*` for full access)
+5. Set an expiry (90 days is a good default)
+6. Click **Issue Passport**
+
+<Warning>
+**Save the private key immediately.** It is shown exactly once and cannot be recovered. Copy it to a password manager or `.env` file now.
+</Warning>
+
+## Step 4: Set Your Environment Variable
+
+```bash
+export UNIPLEX_PASSPORT_KEY="your-private-key-here"
+```
+
+Or add it to your `.env` file:
+
+```bash .env
+UNIPLEX_PASSPORT_KEY=your-private-key-here
+```
+
+## Step 5: Initialize the Agent
+
+<CodeGroup>
+```python Python
+import os
+from uniplex import Agent
+
+# Loads UNIPLEX_PASSPORT_KEY from environment automatically
+agent = Agent.from_env()
+
+# Or load explicitly
+agent = Agent(
+    passport_id="uni_xxxxxxxx",
+    private_key=os.environ["UNIPLEX_PASSPORT_KEY"],
+)
+```
+
+```typescript TypeScript
+import { Agent } from 'uniplex';
+
+// Loads UNIPLEX_PASSPORT_KEY from environment automatically
+const agent = Agent.fromEnv();
+
+// Or load explicitly
+const agent = new Agent({
+  passportId: "uni_xxxxxxxx",
+  privateKey: process.env.UNIPLEX_PASSPORT_KEY!,
+});
+```
+</CodeGroup>
+
+## Step 6: Check Authorization
+
+<CodeGroup>
+```python Python
+decision = agent.authorize("mcp:search")
+
+if decision.allowed:
+    print(f"✓ Authorized — attestation: {decision.attestation_id}")
+    # proceed with your agent action
+else:
+    print(f"✗ Denied: {decision.reason}")
+```
+
+```typescript TypeScript
+const decision = await agent.authorize("mcp:search");
+
+if (decision.allowed) {
+  console.log(`✓ Authorized — attestation: ${decision.attestationId}`);
+  // proceed with your agent action
+} else {
+  console.log(`✗ Denied: ${decision.reason}`);
+}
+```
+</CodeGroup>
+
+## Step 7: Create a Gate (Optional but Recommended)
+
+A Gate enforces your passport at the resource level. Set one up in the dashboard:
+
+1. Click **Gates** → **Create Gate**
+2. Choose a security level (L1 for dev, L2 for production)
+3. Select which issuers to trust
+4. Apply a template or set custom guardrails
+5. Use the gate ID in your code:
+
+```python
+from uniplex import Gate, TrustProfile
+
+gate = Gate(
+    gate_id="gate_xxxxxxxx",
+    profile=TrustProfile.L2,
+)
+
+decision = gate.authorize(passport_token, "mcp:search")
+```
+
+## What's Next
+
+<CardGroup cols={3}>
+  <Card title="Core Concepts" icon="book" href="/concepts/passports">
+    Understand Passports, Gates, Guardrails, and Attestations in depth.
+  </Card>
+  <Card title="Templates" icon="layers" href="/templates/overview">
+    30 pre-built constraint templates — pick one and go.
+  </Card>
+  <Card title="MCP Server" icon="plug" href="/guides/mcp-server">
+    Connect Claude or any MCP client to Supravisor with 21 tools.
+  </Card>
+</CardGroup>

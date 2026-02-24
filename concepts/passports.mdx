@@ -5,11 +5,33 @@ description: "Give your agent a verified identity and enforced constraints — i
 
 # Passports
 
-A passport is your agent's identity. A driver's license and an insurance policy, fused into a single cryptographically signed document.
+## Passports Work on Their Own
+
+No gate. No backend. No infrastructure.
+
+Issue a passport and your agent has policy enforcement immediately — in-process, with no network call. The SDK enforces the passport's permissions right there:
+
+```python
+from uniplex import Passport
+
+passport = Passport.load("passport.json")
+result = passport.check(action="files:write")
+
+if result.allowed:
+    proceed_with_write()
+else:
+    print(f"Blocked: {result.reason}")  # "Permission 'files:write' not granted"
+```
+
+That's it. No gate ID. No account. The passport is self-contained enforcement. Add a gate later when you need remote verification and a managed audit trail.
+
+---
+
+## What a Passport Is
+
+A passport is your agent's identity. A driver's license and an insurance policy, fused into a single tamper-proof document.
 
 The driver's license part: it proves who the agent is and that a trusted authority authorized it. The insurance policy part: it defines exactly what the agent is covered to do — and makes anything outside that scope impossible to claim.
-
-Issue a passport and your agent has policy enforcement immediately. No gate. No account. No infrastructure. Just a signed credential that any gate can verify in under a millisecond — and that enforces its own permissions even without a gate.
 
 ---
 

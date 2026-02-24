@@ -172,9 +172,9 @@ That's exactly what Supravisor does for your AI agent.
   <Accordion title="Do I need to be a developer?">
     For the dashboard — no. Creating issuers, issuing passports, setting up gates, applying templates, and reading the audit trail all happen point-and-click.
 
-    For connecting Supravisor to an AI agent, the easiest no-code path is the MCP integration: run one command (`npx uniplex-mcp-manage`), add Supravisor as an MCP server in Claude's settings, and you're done.
+    For connecting Supravisor to an AI agent, the easiest no-code path is the MCP integration. Run one command (`npx uniplex-mcp-manage`), add Supravisor as an MCP server in Claude's settings, and you're done.
 
-    If you want to protect a custom script or application, you'll need a few lines of Python or TypeScript — but the SDK is designed to be approachable even for non-engineers.
+    If you want to protect a custom script or application, you'll need a few lines of Python or TypeScript. The SDK is designed to be approachable even for non-engineers.
   </Accordion>
 
   <Accordion title="How do I know if it's working?">
@@ -189,6 +189,32 @@ That's exactly what Supravisor does for your AI agent.
     The gate blocks it and returns a denial. Your agent gets a clear error message explaining exactly what rule was violated. That denial is also recorded as an attestation — so you can see in the audit trail that it happened, when it happened, and which rule triggered.
 
     Nothing executes. The agent can't proceed. You're in control.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Common Questions
+
+<AccordionGroup>
+  <Accordion title="Do I need to be a developer to use this?">
+    No. The dashboard handles everything — creating issuers, issuing passports, setting up gates, applying templates, and reading the audit trail all happen point-and-click. No code required.
+  </Accordion>
+
+  <Accordion title="What happens if my agent tries to do something I haven't allowed?">
+    It gets blocked. The gate returns a denial and the agent can't proceed. You get a log entry showing exactly what was attempted, when it happened, and which rule triggered. The agent is told why it was denied.
+  </Accordion>
+
+  <Accordion title="Can I turn this off if I want my agent to have full access?">
+    Yes. L1 passports accept self-issued credentials and can be configured to allow anything. You can grant your agent the `*` permission (full access) at any time — you're always in control of what the rules are.
+  </Accordion>
+
+  <Accordion title="Is my agent's data private?">
+    Yes. The gate runs locally. Your agent's actions never pass through Supravisor's servers unless you explicitly use the hosted verification endpoint. What your agent does stays on your infrastructure.
+  </Accordion>
+
+  <Accordion title="What if I lose the private key?">
+    Issue a new passport. Revoke the old one in one click — go to **Passports** → find it → **Revoke**. The old passport is immediately cancelled and can't be used again.
   </Accordion>
 </AccordionGroup>
 

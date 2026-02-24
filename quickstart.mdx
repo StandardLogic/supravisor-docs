@@ -36,7 +36,7 @@ Your Issuer is your signing authority — the organization stamp that vouches fo
 1. Go to your [dashboard](https://uniplex.ai/dashboard)
 2. Click **Issuers** in the left sidebar → **Create Issuer**
 3. Enter a name (e.g. "My Agents") and a domain (e.g. `mycompany.ai`)
-4. Click **Create** — your Ed25519 keypair is generated in your browser
+4. Click **Create** — your Ed25519 (a type of digital signature that's mathematically impossible to forge) keypair is generated in your browser
 
 <Note>
 Your issuer's private key is generated in your browser and **never sent to Supravisor**. Keep it safe — it's the root of trust for all your agents.
@@ -46,7 +46,7 @@ Your issuer's private key is generated in your browser and **never sent to Supra
 
 ## Step 3: Issue a Passport
 
-A passport is your agent's ID card — cryptographically signed proof of who it is and what it's allowed to do.
+A passport is your agent's ID card — a tamper-proof record of who it is and what it's allowed to do.
 
 1. Click **Passports** → **Issue Passport**
 2. Select your issuer
@@ -148,6 +148,10 @@ if (decision.allowed) {
 
 Every `authorize()` call produces an attestation — a signed, tamper-proof record of the decision. That's your audit trail, built automatically.
 
+<Note>
+  **What just happened?** Your agent tried an action. The SDK checked the passport's permission list, verified the signature, and evaluated any constraints — all in-process, with no network call. The answer came back in microseconds. That's it. That's enforcement.
+</Note>
+
 ---
 
 ## Step 7: Add a Gate (Upgrades Everything)
@@ -206,6 +210,21 @@ You have:
 - ✅ Policy enforcement on every action it takes
 - ✅ A signed audit trail that can't be altered
 - ✅ One-click revocation if anything goes wrong
+
+---
+
+## Where You Are — And Where You Can Go
+
+You're currently at **Level 1** of progressive adoption. Each level adds more:
+
+| Level | What You Use | Infrastructure | Time to Value |
+|-------|-------------|----------------|---------------|
+| **1 — Passport Only** | Passport + SDK enforcement | **None** | 5 minutes |
+| **2 — Gate Only** | Gate + anonymous access | Gate server | 15 minutes |
+| **3 — Passport + Gate** | Full verification + audit trail | Gate server | 30 minutes |
+| **4 — Full Stack** | Issuers, Passports, Gates, Catalogs, Commerce, Attestations | Full platform | Hours |
+
+Step 7 above moves you to Level 3. You don't have to do it today.
 
 ---
 

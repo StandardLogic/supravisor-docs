@@ -1,11 +1,13 @@
 ---
 title: "TypeScript / Node.js SDK"
-description: "npm install uniplex — full reference for the TypeScript SDK."
+description: "npm install uniplex — fully typed, works in Node.js and the browser, everything you need to add agent trust to any TypeScript project."
 ---
 
 # TypeScript / Node.js SDK
 
-The `uniplex` npm package provides a fully typed interface to Supravisor for Node.js and browser environments. It's written in TypeScript and ships with complete type definitions.
+`npm install uniplex` — written in TypeScript, ships with complete type definitions, works in Node.js 18+ and modern browsers.
+
+Same capabilities as the Python SDK: agent identity, policy enforcement, audit trail. Same single `authorize()` call. Full type safety on top.
 
 **Requirements:** Node.js 18+, TypeScript 4.9+
 
@@ -28,20 +30,24 @@ pnpm add uniplex
 ```typescript
 import { Agent, Gate, TrustProfile } from 'uniplex';
 
-// 1. Load agent from environment
+// 1. Load agent from environment — reads UNIPLEX_PASSPORT_KEY
 const agent = await Agent.fromEnv();
 
-// 2. Create a gate
+// 2. Create a gate with your rules
 const gate = new Gate({
   profile: TrustProfile.L2,
   trustedIssuers: ['issuer:mycompany.ai'],
+  constraints: {
+    maxPerDay: '$50.00',       // Daily spending cap
+    domainAllowlist: 'openai.com,anthropic.com'  // Allowed domains
+  }
 });
 
-// 3. Generate a token and authorize
+// 3. Authorize before acting
 const token = agent.generateToken();
 const decision = await gate.authorize(token, 'web:search');
 
-// 4. Check the result
+// 4. Act on the result
 if (decision.allowed) {
   console.log(`Authorized! Attestation: ${decision.attestationId}`);
 } else {
@@ -102,7 +108,7 @@ interface Passport {
 
 ### `Agent.create(agentId, options)` → `Promise<Agent>`
 
-Create a self-issued L1 passport (no account needed).
+Create a self-issued L1 passport. No account needed.
 
 ```typescript
 import { Agent } from 'uniplex';
@@ -119,14 +125,12 @@ console.log(agent.permissions); // ["web:search", "mcp:read"]
 console.log(agent.expiresAt);   // Date object
 ```
 
-**Options:**
-
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
 | `permissions` | `string[]` | ✅ | Permission namespaces to grant |
-| `expiresIn` | `string` | ❌ | Duration string like `"90d"`, `"1y"` |
+| `expiresIn` | `string` | ❌ | Duration like `"90d"`, `"1y"` |
 | `agentName` | `string` | ❌ | Human-readable name |
-| `issuerId` | `string` | ❌ | Issuer ID (uses self-signing if omitted) |
+| `issuerId` | `string` | ❌ | Issuer ID — uses self-signing if omitted |
 
 ---
 
@@ -145,19 +149,18 @@ const agent = new Agent({
 
 ### `Agent.fromEnv()` → `Promise<Agent>`
 
-Load from `UNIPLEX_PASSPORT_KEY` environment variable. The recommended pattern.
+Load from `UNIPLEX_PASSPORT_KEY`. The recommended production pattern.
 
 ```typescript
 const agent = await Agent.fromEnv();
-// Reads process.env.UNIPLEX_PASSPORT_KEY
-// Throws EnvironmentError if not set
+// Throws EnvironmentError if UNIPLEX_PASSPORT_KEY is not set
 ```
 
 ---
 
 ### `Agent.fromJSON(json)` → `Agent`
 
-Load from exported passport JSON.
+Restore from previously exported passport JSON.
 
 ```typescript
 const saved = agent.exportPassport();
@@ -169,10 +172,10 @@ const agent = Agent.fromJSON(saved);
 
 ### `agent.authorize(action, options?)` → `Promise<Decision>`
 
-Check if this agent is authorized for an action.
+Check authorization before taking an action.
 
 ```typescript
-// Simple authorization
+// Simple — just check the action
 const decision = await agent.authorize('web:search');
 
 // With resource context
@@ -180,14 +183,14 @@ const decision = await agent.authorize('files:read', {
   resource: '/project/main.ts',
 });
 
-// With metadata
+// With metadata (required when gate uses 'required' constraint)
 const decision = await agent.authorize('payments:send', {
   resource: 'stripe:charge_50.00',
   metadata: { userId: 'usr_123', sessionId: 'sess_abc' },
 });
 
 if (decision.allowed) {
-  // Proceed
+  // Proceed with the actual work
 } else {
   throw new Error(`Blocked: ${decision.reason}`);
 }
@@ -218,7 +221,7 @@ const token = agent.generateToken({
 | `agentName` | `string` | Human-readable name |
 | `permissions` | `string[]` | Granted permissions |
 | `issuerId` | `string` | The signing issuer |
-| `expiresAt` | `Date` | Expiration timestamp |
+| `expiresAt` | `Date` | When the passport expires |
 | `publicKey` | `string` | Base64 public key |
 
 ---
@@ -230,7 +233,7 @@ const token = agent.generateToken({
 ```typescript
 import { Gate, TrustProfile } from 'uniplex';
 
-// L1 — no issuer verification, for development
+// L1 — for development only, no issuer verification
 const gate = new Gate({ profile: TrustProfile.L1 });
 
 // L2 — standard production gate
@@ -238,21 +241,19 @@ const gate = new Gate({
   profile: TrustProfile.L2,
   trustedIssuers: ['issuer:mycompany.ai'],
   constraints: {
-    maxPerDay: '$50.00',
-    maxPerMinute: 10,
-    domainAllowlist: 'openai.com,anthropic.com',
-    readOnly: false,
+    maxPerDay: '$50.00',           // Daily budget
+    maxPerMinute: 10,              // Rate limit
+    domainAllowlist: 'openai.com,anthropic.com',  // Allowed domains
+    readOnly: false,               // Writes permitted
   },
 });
 
-// Load a managed gate by ID
+// Load managed gate by ID — constraints come from dashboard config
 const gate = new Gate({
   gateId: 'gate_def456',
   apiKey: process.env.UNIPLEX_API_KEY,
 });
 ```
-
-**Options:**
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -268,6 +269,7 @@ const gate = new Gate({
 
 ```typescript
 const decision = await gate.authorize(token, 'web:search');
+
 const decision = await gate.authorize(token, 'payments:send', {
   resource: 'stripe:charge_50.00',
   metadata: { cost: '50.00', userId: 'usr_123' },
@@ -289,27 +291,27 @@ console.log(result.permissions);    // ["web:search", "mcp:read"]
 
 ---
 
-## Constraints Object (TypeScript)
+## Constraints Object
 
 ```typescript
 interface Constraints {
-  maxPerAction?: string;         // "$5.00"
-  maxPerMinute?: number;         // 10
-  maxPerHour?: number;           // 100
-  maxPerDay?: string;            // "$50.00"
-  maxCumulative?: string;        // "$500.00"
-  cumulativeWindow?: string;     // "30d"
-  approvalThreshold?: string;    // "$25.00"
+  maxPerAction?: string;         // "$5.00" — cap per API call
+  maxPerMinute?: number;         // 10 — rate limit
+  maxPerHour?: number;           // 100 — hourly rate limit
+  maxPerDay?: string;            // "$50.00" — daily budget
+  maxCumulative?: string;        // "$500.00" — rolling budget
+  cumulativeWindow?: string;     // "30d" — window for cumulative
+  approvalThreshold?: string;    // "$25.00" — human approval above this
   domainAllowlist?: string;      // "openai.com,anthropic.com"
   domainBlocklist?: string;      // "facebook.com,twitter.com"
   actionAllowlist?: string[];    // ["web:search", "mcp:read"]
   actionBlocklist?: string[];    // ["files:delete", "payments:send"]
-  readOnly?: boolean;            // true
-  noPiiExport?: boolean;         // true
-  required?: string;             // "user_id"
-  model?: string;                // "claude-3-5-sonnet"
-  responseTimeMs?: number;       // 2000
-  uptimeBasisPoints?: number;    // 9900
+  readOnly?: boolean;            // Block all write operations
+  noPiiExport?: boolean;         // Block PII in responses
+  required?: string;             // Required metadata field
+  model?: string;                // Required AI model
+  responseTimeMs?: number;       // Max latency SLA
+  uptimeBasisPoints?: number;    // Required uptime (9900 = 99%)
 }
 ```
 
@@ -347,23 +349,29 @@ try {
   const decision = await gate.authorize(token, 'payments:send');
 } catch (error) {
   if (error instanceof PassportExpiredError) {
-    // Passport has passed its expiresAt date
+    // Passport passed expiresAt — issue a new one
     await rotateCredentials();
+
   } else if (error instanceof PassportRevokedError) {
-    // Passport was manually revoked
+    // Passport was manually revoked — security event
     await alertSecurityTeam();
+
   } else if (error instanceof InsufficientPermissionsError) {
-    // Passport doesn't include the requested permission
+    // Passport doesn't have the requested permission
     console.error(`Missing permission: ${error.requiredPermission}`);
+
   } else if (error instanceof RateLimitExceededError) {
-    // Rate limit exceeded — retry after the specified delay
+    // Rate limit exceeded — wait and retry
     await sleep(error.retryAfterSeconds * 1000);
+
   } else if (error instanceof SpendingLimitExceededError) {
     console.error(`Limit: ${error.limit}, Current: ${error.current}`);
+
   } else if (error instanceof UniplexError) {
     console.error(`Supravisor error: ${error.message}`);
+
   } else {
-    throw error;
+    throw error; // Re-throw anything we don't recognize
   }
 }
 ```
@@ -372,7 +380,7 @@ try {
 
 ## UniplexClient (Managed Platform)
 
-For server-side operations like issuing passports and reading audit trails:
+For server-side operations — issuing passports, reading audit trails, managing gates:
 
 ```typescript
 import { UniplexClient } from 'uniplex';
@@ -388,10 +396,8 @@ const passport = await client.passports.issue({
   expiresIn: '90d',
 });
 
-// List passports
+// List and revoke
 const passports = await client.passports.list({ limit: 50 });
-
-// Revoke a passport
 await client.passports.revoke('uni_abc123');
 
 // Read audit trail
@@ -409,45 +415,40 @@ const attestations = await client.auditTrail.list({
 ```typescript
 import { Agent, Gate, TrustProfile, RateLimitExceededError } from 'uniplex';
 
-// Initialize once at module load
 let agent: Agent;
 let gate: Gate;
 
-async function initialize() {
+export async function initialize() {
   agent = await Agent.fromEnv();
   gate = new Gate({
     profile: TrustProfile.L2,
     trustedIssuers: ['issuer:mycompany.ai'],
     constraints: {
-      maxPerDay: '$20.00',
-      maxPerMinute: 5,
-      maxPerAction: '$2.00',
+      maxPerDay: '$20.00',        // Daily budget
+      maxPerMinute: 5,            // Gentle rate limit
+      maxPerAction: '$2.00',      // Cap per API call
       domainAllowlist: 'google.com,bing.com,arxiv.org,wikipedia.org',
-      readOnly: true,
-      noPiiExport: true,
+      readOnly: true,             // No writes
+      noPiiExport: true,          // Block PII in responses
     },
   });
 
-  // Check credential health
-  const now = new Date();
-  const msUntilExpiry = agent.expiresAt.getTime() - now.getTime();
+  // Warn if credentials are expiring soon
+  const msUntilExpiry = agent.expiresAt.getTime() - Date.now();
   const daysUntilExpiry = msUntilExpiry / (1000 * 60 * 60 * 24);
   if (daysUntilExpiry < 14) {
     console.warn(`⚠️ Passport expires in ${Math.floor(daysUntilExpiry)} days — rotate soon!`);
   }
 }
 
-async function searchWeb(
+export async function searchWeb(
   query: string,
   maxRetries = 3
 ): Promise<string[] | null> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const token = agent.generateToken({
-        metadata: {
-          query: query.slice(0, 100),
-          sessionId: process.env.SESSION_ID,
-        },
+        metadata: { query: query.slice(0, 100), sessionId: process.env.SESSION_ID },
       });
 
       const decision = await gate.authorize(token, 'web:search', {
@@ -455,15 +456,14 @@ async function searchWeb(
       });
 
       if (!decision.allowed) {
-        console.warn(
-          `Search blocked: ${decision.reason} [att:${decision.attestationId}]`
-        );
+        console.warn(`Search blocked: ${decision.reason} [att:${decision.attestationId}]`);
         return null;
       }
 
       const results = await performSearchApiCall(query);
       console.log(`Search authorized [att:${decision.attestationId}]`);
       return results;
+
     } catch (error) {
       if (error instanceof RateLimitExceededError && attempt < maxRetries - 1) {
         console.log(`Rate limited, waiting ${error.retryAfterSeconds}s...`);
@@ -476,12 +476,12 @@ async function searchWeb(
   return null;
 }
 
-async function readPage(url: string): Promise<string | null> {
+export async function readPage(url: string): Promise<string | null> {
   const token = agent.generateToken();
   const decision = await gate.authorize(token, 'web:read', { resource: url });
 
   if (!decision.allowed) {
-    console.warn(`Page read blocked: ${decision.reason} (url=${url})`);
+    console.warn(`Page blocked: ${decision.reason} (url=${url})`);
     return null;
   }
 
@@ -491,8 +491,6 @@ async function readPage(url: string): Promise<string | null> {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-export { initialize, searchWeb, readPage };
 ```
 
 ---
@@ -504,6 +502,6 @@ export { initialize, searchWeb, readPage };
     The pip equivalent for Python projects.
   </Card>
   <Card title="MCP Server" href="/guides/mcp-server" icon="server">
-    Manage Supravisor from Claude via 21 MCP tools.
+    Manage Supravisor from Claude with 21 MCP tools.
   </Card>
 </CardGroup>

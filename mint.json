@@ -30,6 +30,10 @@
     {
       "name": "API Reference",
       "url": "api-reference"
+    },
+    {
+      "name": "Use Cases",
+      "url": "use-cases"
     }
   ],
   "anchors": [
@@ -55,6 +59,8 @@
       "pages": [
         "introduction",
         "quickstart",
+        "quickstart-gate",
+        "progressive-adoption",
         "for-humans"
       ]
     },
@@ -64,8 +70,11 @@
         "concepts/issuers",
         "concepts/passports",
         "concepts/gates",
+        "concepts/anonymous-access",
         "concepts/guardrails",
         "concepts/trust-profiles",
+        "concepts/catalogs",
+        "concepts/commerce",
         "concepts/attestations"
       ]
     },
@@ -84,7 +93,8 @@
       "group": "SDK Reference",
       "pages": [
         "sdk/python",
-        "sdk/typescript"
+        "sdk/typescript",
+        "sdk/mcp-tools"
       ]
     },
     {
@@ -105,8 +115,23 @@
         "api-reference/issuers",
         "api-reference/passports",
         "api-reference/gates",
+        "api-reference/authorize",
         "api-reference/guardrails",
+        "api-reference/commerce",
+        "api-reference/discovery",
         "api-reference/audit-trail"
+      ]
+    },
+    {
+      "group": "Use Cases",
+      "pages": [
+        "use-cases/travel-agent",
+        "use-cases/enterprise-research",
+        "use-cases/data-pipeline",
+        "use-cases/saas-pricing",
+        "use-cases/mcp-protection",
+        "use-cases/cross-org-trust",
+        "use-cases/anonymous-upgrade"
       ]
     }
   ],

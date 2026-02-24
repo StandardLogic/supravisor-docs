@@ -1,6 +1,6 @@
 ---
 title: "What is Supravisor?"
-description: "The trust layer for AI agents — cryptographic identity, policy enforcement, and audit trails."
+description: "Your AI agent is doing real things in the world. Here's how you stay in control."
 ---
 
 <img
@@ -14,30 +14,40 @@ description: "The trust layer for AI agents — cryptographic identity, policy e
   alt="Supravisor Dashboard"
 />
 
-## The Problem
+Your AI agent can browse the web, send emails, move files, and spend money. Right now. Without asking you first.
 
-AI agents are taking real actions in the world — browsing the web, sending emails, spending money, modifying files, calling APIs. But they have **no verifiable identity**, **no enforceable limits**, and **no cryptographic proof** of what they did.
+Supravisor gives you a way to say: *here's who this agent is, here's exactly what it can do, and here's the signed proof of everything it actually did.* That's it. That's the whole product.
 
-When something goes wrong, you have no audit trail. When an agent oversteps, there's no enforcement layer to stop it. When two agents need to trust each other, there's no infrastructure to make that work.
+---
 
-## The Solution
+## The Moment That Makes It Click
 
-Supravisor is the trust infrastructure for the AI agent economy. Four primitives solve everything:
+You're away from your desk. Your Claude agent is working through a task. Your phone buzzes.
+
+> **Your Research Bot wants to delete contract.pdf — Allow or Deny?**
+
+That notification — that feeling of being *in control* even when you're not watching — is what Supravisor is built for. You set the rules once. The system enforces them forever.
+
+---
+
+## Four Primitives. Total Control.
 
 <CardGroup cols={2}>
   <Card title="Passports" icon="id-card" color="#00d9ff">
-    Ed25519-signed credentials that give your agent a verifiable identity and declare exactly what it's allowed to do.
+    A cryptographically signed credential that gives your agent a verified identity and declares exactly what it's allowed to do. Like a driver's license and insurance policy in one document. Works instantly — no gate required.
   </Card>
   <Card title="Gates" icon="shield-check" color="#00d9ff">
-    Local enforcement checkpoints that verify passports in sub-millisecond time — no network round-trip required.
+    A local enforcement checkpoint. Checks every passport in under a millisecond. No network call. The bouncer that reads the ID, checks the rulebook, and signs a record of every decision.
   </Card>
   <Card title="Guardrails" icon="sliders" color="#00d9ff">
-    17 constraint evaluators: spending limits, rate limits, domain allowlists, PII controls, approval workflows, and more.
+    26 constraint types: spending limits, rate caps, domain allowlists, PII controls, approval workflows, and more. The fine print on your agent's insurance policy — enforced automatically.
   </Card>
   <Card title="Attestations" icon="scroll" color="#00d9ff">
-    Signed, immutable proof of every authorization decision. Cryptographically unforgeable. Shareable. Forever.
+    A cryptographically signed receipt for every decision. Allow or deny. Not a log — a proof. Hand it to an auditor, a lawyer, or a skeptical board member. It can't be faked.
   </Card>
 </CardGroup>
+
+---
 
 ## How It Works
 
@@ -47,33 +57,39 @@ Your AI Agent  →  presents Passport  →  Gate checks it  →  Guardrails enfo
 
 1. **Issue a Passport** — your agent gets a cryptographic identity signed by your issuer
 2. **Create a Gate** — protects whatever resource your agent is accessing
-3. **Agent presents Passport** — the gate verifies it locally, enforces your guardrails, logs the decision
-4. **Read the Attestation** — cryptographic proof of what happened, signed by the gate
+3. **Agent presents Passport** — the gate verifies it locally, enforces your rules, logs the decision
+4. **Read the Attestation** — signed proof of what happened, impossible to alter after the fact
 
-## Quickstart
+**The zero-friction shortcut:** Issue a passport and enforce constraints immediately — no gate, no account setup, no infrastructure. A self-signed passport gives you policy enforcement from minute one. Add a gate when you're ready for remote verification and a full audit trail.
+
+---
+
+## Start in 5 Minutes
 
 <CardGroup cols={2}>
-  <Card title="5-Minute Quickstart" icon="rocket" href="/quickstart">
-    Get a verified agent running in 5 minutes with Python or TypeScript.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install the SDK and have a verified agent running in 5 minutes.
   </Card>
   <Card title="No Code? Start Here" icon="user" href="/for-humans">
-    Plain-English guide — no developer experience required.
+    Plain English. Zero jargon. Works with Claude, ChatGPT, or any AI.
   </Card>
-  <Card title="Protect Claude Code" icon="terminal" href="/guides/protect-claude">
-    Step-by-step integration with Claude and Claude Code.
+  <Card title="Protect Claude" icon="terminal" href="/guides/protect-claude">
+    Connect Supravisor to Claude and Claude Code right now.
   </Card>
   <Card title="Agent Autonomy" icon="robot" href="/guides/agent-autonomy">
-    How AI agents can self-authenticate with zero human involvement.
+    How agents authenticate and manage their own credentials.
   </Card>
 </CardGroup>
 
+---
+
 ## The Uniplex Protocol
 
-Supravisor is powered by the **Uniplex open protocol** — an open standard for agent trust built on Ed25519 signatures and RFC 8785 JSON canonicalization. 
+Supravisor runs on the **Uniplex open protocol** — an open standard for agent identity built on Ed25519 signatures and RFC 8785 JSON canonicalization.
 
 - Open source: [github.com/uniplexprotocol/uniplex](https://github.com/uniplexprotocol/uniplex)
-- Python SDK: `pip install uniplex`
-- TypeScript SDK: `npm install uniplex`
+- Python: `pip install uniplex`
+- TypeScript: `npm install uniplex`
 - MCP Server: `npx uniplex-mcp-manage`
 
-Supravisor is the managed platform. The protocol is open. Either way, your agents get the trust layer they need.
+The protocol is open. The platform is managed. Both give your agents the trust layer they need.

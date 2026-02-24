@@ -1,11 +1,11 @@
 ---
 title: "Passports API"
-description: "Issue, read, and revoke agent credentials."
+description: "Issue, list, revoke, and authorize agent credentials. The Passports API is how you create and manage cryptographic agent identity."
 ---
 
 # Passports API
 
-Passports are the cryptographic credentials that AI agents carry to prove their identity and permissions. This API covers issuing, reading, revoking passports, and the core authorization endpoint.
+Passports are your agents' cryptographic identity documents — Ed25519-signed credentials that prove who an agent is and what it's allowed to do. This API covers issuing, reading, revoking passports, and the core authorization endpoint.
 
 **Base URL:** `https://uniplex.ai/api`
 
@@ -13,7 +13,7 @@ Passports are the cryptographic credentials that AI agents carry to prove their 
 
 ## Issue Passport
 
-Create a new passport for an AI agent. The Ed25519 keypair is generated server-side.
+Create a new passport for an AI agent.
 
 ```
 POST /api/passports
@@ -25,12 +25,12 @@ POST /api/passports
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agent_id` | string | ✅ | Slug identifier (alphanumeric, hyphens) |
+| `agent_id` | string | ✅ | Slug identifier (alphanumeric, hyphens) — shows in audit logs |
 | `agent_name` | string | ✅ | Human-readable display name |
 | `issuer_id` | string | ✅ | The issuer that signs this passport |
 | `permissions` | string[] | ✅ | Granted permission namespaces |
 | `expires_in` | string | ❌ | Duration like `"90d"`, `"1y"` (default: `"365d"`) |
-| `public_key` | string | ❌ | Provide your own public key (agent generates its own keypair) |
+| `public_key` | string | ❌ | Provide your own Ed25519 public key — server never generates or stores private keys |
 
 **Example Request:**
 
@@ -66,7 +66,7 @@ curl -X POST https://uniplex.ai/api/passports \
 ```
 
 <Warning>
-  `private_key` is shown exactly once. Store it in `UNIPLEX_PASSPORT_KEY` in your agent's environment immediately.
+  `private_key` is shown exactly once and never stored by Supravisor. Set it as `UNIPLEX_PASSPORT_KEY` in your agent's environment immediately. It cannot be recovered.
 </Warning>
 
 ---
@@ -92,10 +92,9 @@ GET /api/passports
 | `limit` | integer | Results per page (default: 50, max: 200) |
 | `offset` | integer | Pagination offset |
 
-**Example Request:**
+**Example — find passports expiring in the next 30 days:**
 
 ```bash
-# List active passports expiring in the next 30 days
 curl "https://uniplex.ai/api/passports" \
   -H "Authorization: Bearer uni_xxxx" \
   -G \
@@ -129,15 +128,13 @@ curl "https://uniplex.ai/api/passports" \
 
 ## Get Passport
 
-Retrieve a single passport by ID.
+Retrieve a single passport by ID. Never returns the private key.
 
 ```
 GET /api/passports/:passport_id
 ```
 
 **Required scope:** `passports:read`
-
-**Example Request:**
 
 ```bash
 curl https://uniplex.ai/api/passports/uni_abc123 \
@@ -152,13 +149,11 @@ curl https://uniplex.ai/api/passports/uni_abc123 \
   "agent_id": "research-bot",
   "agent_name": "Research Bot",
   "issuer_id": "issuer:mycompany.ai",
-  "permissions": ["web:search", "web:read", "mcp:read"],
+  "permissions": ["web:search", "web:read"],
   "public_key": "base64_ed25519_public_key...",
   "issued_at": "2026-02-24T10:00:00Z",
   "expires_at": "2026-05-24T10:00:00Z",
-  "status": "active",
-  "gate_checks_count": 342,
-  "last_used_at": "2026-02-24T15:30:00Z"
+  "status": "active"
 }
 ```
 
@@ -166,7 +161,7 @@ curl https://uniplex.ai/api/passports/uni_abc123 \
 
 ## Revoke Passport
 
-Revoke a passport immediately. All future gate checks will deny this passport.
+Immediately revoke a passport. Takes effect within milliseconds on all connected gates.
 
 ```
 DELETE /api/passports/:passport_id
@@ -174,138 +169,156 @@ DELETE /api/passports/:passport_id
 
 **Required scope:** `passports:revoke`
 
-**Example Request:**
-
 ```bash
 curl -X DELETE https://uniplex.ai/api/passports/uni_abc123 \
   -H "Authorization: Bearer uni_xxxx"
 ```
 
-**Response:**
+**Response:** `204 No Content`
 
-```json
-{
-  "passport_id": "uni_abc123",
-  "status": "revoked",
-  "revoked_at": "2026-02-24T16:00:00Z"
-}
-```
+<Warning>
+  Revocation is immediate and irreversible. Once revoked, the passport cannot be reinstated — you must issue a new one. L2/L3 gates enforce revocation within their cache window (60 seconds for L2, instant for L3).
+</Warning>
 
 ---
 
-## Check Authorization
+## Authorize
 
-**This is the core endpoint.** Check whether a passport token is authorized to perform an action, evaluated against a gate's configuration and constraints.
+Check if a passport token is authorized for an action at a specific gate. Returns the authorization decision and a signed attestation.
 
 ```
 POST /api/authorize
 ```
 
-**Required scope:** Any valid API key (no specific scope required for this endpoint)
+**Required scope:** None (uses the gate's own authorization)
 
-This is intentionally open — any authenticated caller can check authorization. The security comes from the passport and gate configuration, not the API key scope.
-
-### Request
-
-```json
-{
-  "passport_token": "base64_encoded_passport_json_token",
-  "action": "mcp:search",
-  "resource": "web:google",
-  "gate_id": "gate_xxxxxxxx",
-  "metadata": {
-    "cost": "2.50",
-    "user_id": "usr_123",
-    "session_id": "sess_abc",
-    "nonce": "unique-request-nonce-12345"
-  }
-}
-```
+**Request Body:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `passport_token` | string | ✅ | Base64-encoded passport token from the agent |
-| `action` | string | ✅ | The action to check (e.g., `web:search`, `payments:send`) |
-| `resource` | string | ❌ | Target resource for domain/URL constraint evaluation |
-| `gate_id` | string | ❌ | Gate to evaluate against (uses account default if omitted) |
-| `metadata` | object | ❌ | Additional context: cost, user_id, nonce, etc. |
+| `passport_token` | string | ✅ | The passport token from `agent.generate_token()` |
+| `action` | string | ✅ | The action to check (e.g., `web:search`) |
+| `gate_id` | string | ✅ | The gate to check against |
+| `resource` | string | ❌ | Target resource (e.g., URL or file path) |
+| `metadata` | object | ❌ | Additional context for constraint evaluation |
+| `dry_run` | boolean | ❌ | If `true`, evaluates but doesn't create an attestation |
 
-### Response (Allow)
-
-```json
-{
-  "allowed": true,
-  "reason": "All constraints satisfied",
-  "attestation_id": "att_xxxxxxxx",
-  "checked_at": "2026-02-24T10:30:00Z",
-  "constraints_evaluated": [
-    {
-      "type": "max_per_day",
-      "value": "$50.00",
-      "current": "$12.40",
-      "result": "pass",
-      "detail": "Daily spend $12.40 of $50.00 limit"
-    },
-    {
-      "type": "domain_allowlist",
-      "value": "google.com,bing.com",
-      "current": "google.com",
-      "result": "pass",
-      "detail": "Target domain google.com is in allowlist"
-    }
-  ]
-}
-```
-
-### Response (Deny)
-
-```json
-{
-  "allowed": false,
-  "reason": "Daily spending limit exceeded: $48.75 of $50.00 used",
-  "attestation_id": "att_yyyyyyyy",
-  "checked_at": "2026-02-24T22:45:00Z",
-  "constraints_evaluated": [
-    {
-      "type": "max_per_day",
-      "value": "$50.00",
-      "current": "$48.75",
-      "result": "fail",
-      "detail": "Would exceed daily limit: $48.75 + $5.00 = $53.75 > $50.00"
-    }
-  ]
-}
-```
-
-### Example Request
+**Example Request:**
 
 ```bash
 curl -X POST https://uniplex.ai/api/authorize \
   -H "Authorization: Bearer uni_xxxx" \
   -H "Content-Type: application/json" \
   -d '{
-    "passport_token": "eyJwYXlsb2FkIjp7InBhc3Nwb3J0X2lkIjoiI...",
-    "action": "mcp:search",
-    "resource": "web:google.com",
+    "passport_token": "base64_passport_token_here",
+    "action": "web:search",
     "gate_id": "gate_def456",
-    "metadata": {
-      "cost": "0.10",
-      "session_id": "sess_abc123"
-    }
+    "resource": "google.com",
+    "metadata": {"user_id": "usr_123"}
   }'
+```
+
+**Response — Allowed:**
+
+```json
+{
+  "allowed": true,
+  "decision": "allow",
+  "reason": "All constraints satisfied",
+  "attestation_id": "att_xyz789",
+  "constraints_evaluated": [
+    {
+      "type": "max_per_day",
+      "value": "$50.00",
+      "current": "$12.40",
+      "result": "pass"
+    },
+    {
+      "type": "domain_allowlist",
+      "value": "google.com,bing.com",
+      "current": "google.com",
+      "result": "pass"
+    }
+  ],
+  "checked_at": "2026-02-24T10:30:00Z"
+}
+```
+
+**Response — Denied:**
+
+```json
+{
+  "allowed": false,
+  "decision": "deny",
+  "reason": "Spending limit exceeded: $47.80 of $50.00 daily limit used",
+  "attestation_id": "att_abc456",
+  "constraints_evaluated": [
+    {
+      "type": "max_per_day",
+      "value": "$50.00",
+      "current": "$47.80",
+      "result": "fail",
+      "detail": "Would exceed daily limit: $47.80 + $5.00 = $52.80 > $50.00"
+    }
+  ],
+  "checked_at": "2026-02-24T22:45:00Z"
+}
 ```
 
 ---
 
-## Error Responses
+## Verify Passport
 
-| Error Code | HTTP Status | Description |
-|-----------|------------|-------------|
-| `PASSPORT_NOT_FOUND` | 404 | Passport ID does not exist |
-| `PASSPORT_EXPIRED` | 400 | Passport has passed its `expires_at` |
-| `PASSPORT_REVOKED` | 400 | Passport was explicitly revoked |
-| `PASSPORT_SIGNATURE_INVALID` | 400 | The passport's Ed25519 signature is invalid |
-| `ISSUER_NOT_TRUSTED` | 403 | Passport issuer not in gate's trusted issuers |
-| `PERMISSION_DENIED` | 403 | Passport lacks the required permission |
-| `CONSTRAINT_VIOLATION` | 403 | A guardrail constraint blocked the action |
-| `GATE_NOT_FOUND` | 404 | The specified gate_id does not exist |
+Verify a passport's cryptographic signature and validity without checking a specific action.
+
+```
+POST /api/passports/verify
+```
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `passport_token` | string | ✅ | The passport token to verify |
+| `gate_id` | string | ✅ | The gate to verify against (determines trusted issuers) |
+
+**Response:**
+
+```json
+{
+  "valid": true,
+  "issuer_trusted": true,
+  "agent_id": "research-bot",
+  "agent_name": "Research Bot",
+  "issuer_id": "issuer:mycompany.ai",
+  "permissions": ["web:search", "web:read"],
+  "expires_at": "2026-05-24T10:00:00Z"
+}
+```
+
+---
+
+## Error Codes
+
+| Code | Meaning |
+|------|---------|
+| `PASSPORT_EXPIRED` | The passport's `expires_at` has passed |
+| `PASSPORT_REVOKED` | The passport was manually revoked |
+| `ISSUER_NOT_TRUSTED` | The passport's issuer is not in the gate's trusted list |
+| `INVALID_SIGNATURE` | The passport's Ed25519 signature is invalid |
+| `PERMISSION_DENIED` | The passport doesn't include the requested action |
+| `RATE_LIMIT_EXCEEDED` | Rate constraint triggered |
+| `SPENDING_LIMIT_EXCEEDED` | Spending constraint triggered |
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Gates API" href="/api-reference/gates" icon="shield">
+    Create the enforcement checkpoints that evaluate passports.
+  </Card>
+  <Card title="Passports Concept" href="/concepts/passports" icon="id-card">
+    Understand how passport enforcement works without a gate.
+  </Card>
+</CardGroup>

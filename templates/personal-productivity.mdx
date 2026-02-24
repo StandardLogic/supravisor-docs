@@ -1,26 +1,26 @@
 ---
 title: "Personal Productivity Templates"
-description: "6 templates for personal AI assistants."
+description: "6 templates for personal AI assistants — conservative defaults you can loosen once you trust the agent's behavior."
 ---
 
 # Personal Productivity Templates
 
-Six templates designed for personal AI assistants. Conservative defaults with sensible daily limits — easy to loosen once you've validated the agent's behavior.
+Six templates for personal AI assistants. These start conservative — sensible daily limits, careful defaults around irreversible actions. Once you've watched the agent's behavior in your audit trail for a week and it's behaving well, you can loosen the limits.
+
+The philosophy here: it's easier to expand permissions than to undo an action your agent shouldn't have taken.
 
 ---
 
 ## 1. Personal Email Agent
 
-**Use case:** An AI assistant that manages your inbox — reads, drafts replies, and sends emails — with guardrails to prevent accidental mass sends or outreach to new contacts without your approval.
+**What it does:** Reads your inbox, drafts replies, and sends emails — with limits that prevent runaway sending or outreach to new contacts without your approval.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `action_allowlist` | `email:read, email:send, email:search` | No delete or export |
-| `max_per_day` | `50 actions` | Prevents runaway sending |
-| `approval_threshold` | New recipient | Flags emails to unknown contacts |
-| `domain_blocklist` | _(none by default)_ | Customize to your needs |
-| `read_only` | `false` | Must be able to send |
-| `no_pii_export` | `true` | Prevent bulk contact export |
+| `action_allowlist` | `email:read, email:send, email:search, email:draft` | No delete or bulk export |
+| `max_per_hour` | `20` | Prevents runaway sending |
+| `no_pii_export` | `true` | No bulk contact export |
+| `action_blocklist` | `email:delete, email:export, email:forward_all` | Irreversible actions blocked |
 
 ```json
 {
@@ -28,7 +28,6 @@ Six templates designed for personal AI assistants. Conservative defaults with se
   "constraints": {
     "action_allowlist": ["email:read", "email:send", "email:search", "email:draft"],
     "max_per_hour": 20,
-    "max_per_day": "$0",
     "no_pii_export": true,
     "read_only": false,
     "required": "user_context",
@@ -38,21 +37,21 @@ Six templates designed for personal AI assistants. Conservative defaults with se
 ```
 
 <Tip>
-  Set `approval_threshold` to require human approval for any email to a recipient not in your address book. Configure this by adding a custom contact-check integration.
+  Add a custom contact-check integration to require approval for any email to a recipient not in your address book.
 </Tip>
 
 ---
 
 ## 2. Calendar Manager
 
-**Use case:** An AI assistant that schedules meetings, creates events, and manages your calendar — without the ability to delete events or make changes you can't undo.
+**What it does:** Schedules meetings, creates events, and manages your calendar — without the ability to delete events or make mass cancellations you can't undo.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
 | `action_allowlist` | `calendar:read, calendar:create, calendar:update` | Explicit no-delete |
-| `action_blocklist` | `calendar:delete, calendar:cancel` | Prevent irreversible changes |
+| `action_blocklist` | `calendar:delete, calendar:cancel_all` | No irreversible changes |
 | `max_per_hour` | `20` | Prevent calendar flooding |
-| `required` | `event_duration` | Every event must have a duration |
+| `required` | `event_title` | Every event must have a title |
 
 ```json
 {
@@ -67,7 +66,6 @@ Six templates designed for personal AI assistants. Conservative defaults with se
     ],
     "action_blocklist": ["calendar:delete", "calendar:cancel_all"],
     "max_per_hour": 20,
-    "max_per_day": "$0",
     "required": "event_title",
     "read_only": false
   }
@@ -78,14 +76,13 @@ Six templates designed for personal AI assistants. Conservative defaults with se
 
 ## 3. File Organizer
 
-**Use case:** An AI that sorts, renames, and moves files in designated folders. Cannot delete files, cannot share files externally, and operates only within scoped directories.
+**What it does:** Renames, moves, and organizes files — without delete permissions. All moves are reversible; all deletes are blocked.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `action_allowlist` | `files:read, files:move, files:rename, files:create` | No delete |
-| `action_blocklist` | `files:delete, files:share_external, files:upload_external` | Hard blocks |
-| `domain_blocklist` | External cloud services | No Dropbox/Drive sync |
-| `read_only` | `false` | Must be able to move/rename |
+| `action_allowlist` | `files:read, files:list, files:rename, files:move` | No delete |
+| `action_blocklist` | `files:delete, files:overwrite` | Irreversible actions blocked |
+| `domain_blocklist` | External cloud services | Stays local |
 
 ```json
 {
@@ -94,56 +91,51 @@ Six templates designed for personal AI assistants. Conservative defaults with se
     "action_allowlist": [
       "files:read",
       "files:list",
-      "files:move",
       "files:rename",
-      "files:create_folder"
+      "files:move",
+      "files:create"
     ],
     "action_blocklist": [
       "files:delete",
-      "files:share",
-      "files:upload_external",
-      "files:download_external"
+      "files:overwrite",
+      "files:upload_external"
     ],
-    "domain_blocklist": "dropbox.com,drive.google.com,onedrive.live.com",
     "read_only": false,
     "no_pii_export": true
   }
 }
 ```
 
-<Warning>
-  Scope the agent's file system access to specific directories at the OS level as well. Supravisor prevents the action — your OS permissions are the second line of defense.
-</Warning>
-
 ---
 
-## 4. Note-Taking Agent
+## 4. Notes and Knowledge Manager
 
-**Use case:** An AI that creates and edits notes in your note-taking app. Read-only for sensitive folders (finance, health, legal), read-write for general notes.
+**What it does:** Reads, creates, and updates notes — without deleting or publishing anything externally.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `action_allowlist` | `notes:read, notes:create, notes:update` | No delete |
-| `action_blocklist` | `notes:delete, notes:export_all` | Hard blocks |
-| `no_pii_export` | `true` | No bulk contact or personal data |
+| `action_allowlist` | `notes:read, notes:create, notes:update, notes:search` | No delete |
+| `action_blocklist` | `notes:delete, notes:publish_external, notes:share_all` | No bulk operations |
+| `no_pii_export` | `true` | Personal notes may contain sensitive data |
 
 ```json
 {
-  "template": "note-taking-agent",
+  "template": "notes-manager",
   "constraints": {
     "action_allowlist": [
       "notes:read",
       "notes:create",
       "notes:update",
       "notes:search",
-      "notes:tag"
+      "notes:tag",
+      "notes:link"
     ],
     "action_blocklist": [
       "notes:delete",
+      "notes:publish_external",
       "notes:export_all",
-      "notes:share_external"
+      "notes:share_all"
     ],
-    "read_only": false,
     "no_pii_export": true,
     "max_per_hour": 30
   }
@@ -154,14 +146,13 @@ Six templates designed for personal AI assistants. Conservative defaults with se
 
 ## 5. Task Manager
 
-**Use case:** An AI that creates and updates tasks in your task manager. Never deletes tasks (archive instead), and can generate a daily summary to your email.
+**What it does:** Creates, updates, and completes tasks — without bulk deletions or access to data outside the task system.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `action_allowlist` | `tasks:read, tasks:create, tasks:update, tasks:complete` | No delete |
-| `action_blocklist` | `tasks:delete, tasks:bulk_delete` | Hard blocks |
-| `max_per_day` | `200 actions` | Prevent task flooding |
-| `required` | `task_title` | Every task must have a title |
+| `action_allowlist` | `tasks:read, tasks:create, tasks:update, tasks:complete` | Scoped to task actions |
+| `action_blocklist` | `tasks:delete_all, tasks:archive_all` | No bulk irreversible operations |
+| `required` | `project_id` | Every task tagged to a project |
 
 ```json
 {
@@ -172,13 +163,16 @@ Six templates designed for personal AI assistants. Conservative defaults with se
       "tasks:create",
       "tasks:update",
       "tasks:complete",
-      "tasks:archive",
       "tasks:assign",
-      "tasks:search"
+      "tasks:comment"
     ],
-    "action_blocklist": ["tasks:delete", "tasks:bulk_delete", "tasks:purge"],
+    "action_blocklist": [
+      "tasks:delete",
+      "tasks:delete_all",
+      "tasks:archive_all"
+    ],
+    "required": "project_id",
     "max_per_hour": 50,
-    "required": "task_title",
     "read_only": false
   }
 }
@@ -186,66 +180,60 @@ Six templates designed for personal AI assistants. Conservative defaults with se
 
 ---
 
-## 6. Personal Shopper
+## 6. Shopping and Price Research Agent
 
-**Use case:** An AI that searches for products, compares prices, and can make purchases — with hard spending caps and a human approval threshold for anything significant.
+**What it does:** Researches products, compares prices, and saves items to wish lists — without placing orders or accessing payment methods.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `max_per_action` | `$500.00` | No single purchase over $500 |
-| `approval_threshold` | `$100.00` | Human approves anything over $100 |
-| `max_per_day` | `$500.00` | Daily cap |
-| `action_allowlist` | `shopping:search, shopping:compare, shopping:purchase` | Scoped actions |
-| `domain_allowlist` | Approved retailers | Prevent unknown merchants |
+| `action_allowlist` | `web:search, web:read, shopping:search, shopping:save_wishlist` | No purchase actions |
+| `action_blocklist` | `shopping:purchase, payments:*` | Never buys anything |
+| `domain_allowlist` | Shopping and review sites | Scoped to relevant domains |
+| `read_only` | `true` | Research only |
 
 ```json
 {
-  "template": "personal-shopper",
+  "template": "shopping-research",
   "constraints": {
+    "read_only": true,
     "action_allowlist": [
+      "web:search",
+      "web:read",
       "shopping:search",
       "shopping:compare",
-      "shopping:read_reviews",
-      "shopping:add_to_cart",
-      "shopping:purchase"
+      "shopping:save_wishlist"
     ],
-    "max_per_action": "$500.00",
-    "approval_threshold": "$100.00",
-    "max_per_day": "$500.00",
-    "max_cumulative": "$2000.00",
-    "cumulative_window": "30d",
-    "domain_allowlist": "amazon.com,bestbuy.com,target.com,walmart.com",
-    "no_pii_export": true
+    "action_blocklist": [
+      "shopping:purchase",
+      "shopping:add_to_cart",
+      "payments:send",
+      "payments:authorize"
+    ],
+    "domain_allowlist": "amazon.com,google.com,wirecutter.com,rtings.com,reddit.com",
+    "max_per_hour": 30
   }
 }
 ```
 
-<Warning>
-  For any template that involves payments, always configure `approval_threshold` and test the approval flow before deploying in production.
-</Warning>
-
 ---
 
-## Applying a Personal Productivity Template
+## Applying Personal Templates
 
 ```bash
-# Apply via API
+# Apply the Calendar Manager template
 curl -X POST https://uniplex.ai/api/gates \
   -H "Authorization: Bearer uni_xxxx" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "My Email Gate",
+    "name": "Personal Calendar Gate",
     "profile": "L2",
     "trusted_issuers": ["issuer:personal.local"],
-    "template": "personal-email-agent"
+    "template": "calendar-manager"
   }'
 ```
-
-Or ask Claude (with MCP server running):
-> "Create a gate for my email agent using the Personal Email Agent template."
 
 ---
 
 <Card title="Browse All Templates" href="/templates/overview" icon="grid">
-  Back to the full template overview with all 30 profiles.
+  Back to the full template overview across all 5 categories.
 </Card>

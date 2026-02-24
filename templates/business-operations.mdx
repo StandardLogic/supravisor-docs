@@ -1,22 +1,24 @@
 ---
 title: "Business Operations Templates"
-description: "6 templates for business process automation."
+description: "6 templates for business process automation — built with escalation paths, audit requirements, and conservative defaults around sensitive operations."
 ---
 
 # Business Operations Templates
 
-Six templates for business process automation. Built for team deployments with escalation paths, audit requirements, and conservative defaults around sensitive operations.
+Six templates for business process automation. These are built for team deployments where more than one person is affected by what the agent does.
+
+The defaults are conservative for a reason: customer data, financial records, and employee information have legal implications. The templates reflect what goes wrong in practice — support bots that can accidentally close tickets, sales agents that can email without approval, HR agents that shouldn't see salary data.
 
 ---
 
 ## 1. Customer Support Agent
 
-**Use case:** An AI that reads your knowledge base, responds to support tickets, and escalates to a human when specific keywords are detected (billing disputes, legal threats, refund requests).
+**What it does:** Reads your knowledge base, responds to support tickets, and escalates to a human when needed — without touching payments, closing tickets autonomously, or accessing PII in bulk.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `action_allowlist` | `tickets:read, tickets:respond, kb:read, tickets:tag` | No create/delete/close |
-| `action_blocklist` | `tickets:delete, tickets:close, payments:*` | No payment access |
+| `action_allowlist` | `tickets:read, tickets:respond, kb:read, tickets:tag` | No delete, close, or payment access |
+| `action_blocklist` | `tickets:delete, tickets:close, payments:*` | Hard blocks |
 | `required` | `ticket_id` | Every action tagged to a ticket |
 | `no_pii_export` | `true` | Customer data protection |
 
@@ -48,20 +50,19 @@ Six templates for business process automation. Built for team deployments with e
 ```
 
 <Tip>
-  Add keyword-based escalation by configuring your ticket system to pause agent responses when terms like "refund," "lawyer," or "cancel account" are detected, before Supravisor evaluation.
+  Configure your ticket system to pause agent responses when terms like "refund," "lawyer," or "cancel account" appear — before Supravisor evaluation even runs.
 </Tip>
 
 ---
 
 ## 2. Sales Development Agent
 
-**Use case:** An AI that researches prospects and prepares outreach materials — but cannot send emails without a human approving each one. Research is fully automated; sending requires human review.
+**What it does:** Researches prospects and prepares outreach — but cannot send a single email without a human approving it first. Research is fully automated. Sending requires a human in the loop.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `action_allowlist` | `web:search, crm:read, crm:update, email:draft` | Can draft but not send |
+| `action_allowlist` | `web:search, crm:read, crm:update, email:draft` | Draft only, not send |
 | `action_blocklist` | `email:send, email:schedule` | No autonomous sending |
-| `approval_threshold` | `$0.01` | Human approves everything above zero cost (i.e., all sends) |
 | `no_pii_export` | `true` | No bulk prospect export |
 
 ```json
@@ -95,14 +96,14 @@ Six templates for business process automation. Built for team deployments with e
 
 ## 3. Contract Review Agent
 
-**Use case:** An AI that reads contracts and legal documents, flags clause types (liability caps, auto-renewal, IP assignment), and produces summaries — without modifying any documents.
+**What it does:** Reads contracts, flags clause types (liability caps, auto-renewal, IP assignment), and produces summaries — without modifying any documents. Ever.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
 | `read_only` | `true` | Absolute — no modifications |
-| `action_allowlist` | `files:read, docs:read, docs:annotate_local` | Read only + local notes |
+| `action_allowlist` | `files:read, docs:read, docs:summarize` | Read and local annotation only |
 | `no_pii_export` | `true` | No customer PII in outputs |
-| `domain_blocklist` | External services | No document upload to external AI |
+| `domain_blocklist` | External AI services | No contract text to third-party AI |
 
 ```json
 {
@@ -129,20 +130,20 @@ Six templates for business process automation. Built for team deployments with e
 ```
 
 <Warning>
-  The `domain_blocklist` for external AI services ensures that contract text is not sent to third-party AI services. If you want to use an AI service for summarization, add your specific API domain to the allowlist and audit the integration carefully.
+  The `domain_blocklist` for external AI services ensures that contract text is not sent to third-party AI services. If you need AI summarization, add your specific API domain to the allowlist and audit the integration.
 </Warning>
 
 ---
 
 ## 4. HR Onboarding Agent
 
-**Use case:** An AI that sends onboarding emails from templates, sets up accounts, and guides new hires — without access to salary data, SSNs, or the ability to delete HR records.
+**What it does:** Sends templated onboarding emails, provisions accounts, and guides new hires — without access to salary data, SSNs, or bank information.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `action_allowlist` | `email:send_template, hris:read_public, accounts:create` | Template emails only |
+| `action_allowlist` | `email:send_template, hris:read_public, accounts:provision` | Templates only, no freeform |
 | `action_blocklist` | `hris:read_salary, hris:read_ssn, hris:delete` | Hard blocks on sensitive fields |
-| `no_pii_export` | `true` | No bulk export of employee data |
+| `no_pii_export` | `true` | No bulk employee data export |
 | `required` | `employee_id` | Every action tagged to an employee |
 
 ```json
@@ -175,7 +176,7 @@ Six templates for business process automation. Built for team deployments with e
 
 ## 5. Expense Report Agent
 
-**Use case:** An AI that reads receipts and expense submissions, creates records in your expense system, and prepares reports — without the ability to approve, execute, or reject payments.
+**What it does:** Reads receipts and expense submissions, creates records in your expense system, and prepares reports — without the ability to approve, execute, or reject payments.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
@@ -214,13 +215,13 @@ Six templates for business process automation. Built for team deployments with e
 
 ## 6. Meeting Scheduler
 
-**Use case:** An AI that reads calendars, proposes meeting times, creates calendar events, and sends invitations — with limits on external invitations to prevent calendar spam or data leakage.
+**What it does:** Reads calendars, proposes times, creates events, and sends invitations — with limits on external invitations to prevent calendar spam or data leakage.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
 | `action_allowlist` | `calendar:read, calendar:create, calendar:invite` | R/W with invite cap |
 | `action_blocklist` | `calendar:delete_all, calendar:export_all` | No bulk operations |
-| `max_per_day` | `20 external invites` | Prevent calendar bombing |
+| `max_per_hour` | `20 external invites` | Prevent calendar bombing |
 | `domain_allowlist` | Company domains | External invites to approved domains only |
 
 ```json
@@ -252,7 +253,6 @@ Six templates for business process automation. Built for team deployments with e
 ## Applying Business Templates
 
 ```bash
-# Apply the Customer Support Agent template
 curl -X POST https://uniplex.ai/api/gates \
   -H "Authorization: Bearer uni_xxxx" \
   -H "Content-Type: application/json" \
@@ -267,5 +267,5 @@ curl -X POST https://uniplex.ai/api/gates \
 ---
 
 <Card title="Browse All Templates" href="/templates/overview" icon="grid">
-  Back to the full template overview with all 30 profiles.
+  Back to the full template overview across all 5 categories.
 </Card>

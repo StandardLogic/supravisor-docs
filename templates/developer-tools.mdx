@@ -1,24 +1,26 @@
 ---
 title: "Developer Tool Templates"
-description: "6 templates for AI-powered developer workflows."
+description: "6 templates for AI-powered developer workflows — read the codebase freely, but write only to safe, specific targets."
 ---
 
 # Developer Tool Templates
 
-Six templates for AI agents in developer workflows. These are typically read-heavy with carefully scoped write permissions — read the codebase freely, but only write to specific, safe targets.
+Six templates for AI agents in developer workflows. The pattern here is almost always the same: read everything, write carefully, never push or merge without explicit human action.
+
+A code review agent that can push to main is not a code review agent. A security scanner that auto-patches is a security incident waiting to happen. These templates are built around that principle.
 
 ---
 
 ## 1. Code Review Agent
 
-**Use case:** An AI that reads pull requests, analyzes code changes, and posts review comments — without the ability to push code, merge branches, or modify repository settings.
+**What it does:** Reads pull requests, analyzes code changes, and posts review comments — without the ability to push code, merge branches, or touch repository settings.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
 | `action_allowlist` | `git:read, git:read_diff, pr:comment, pr:review` | Read + comment only |
 | `action_blocklist` | `git:push, git:merge, git:delete_branch, git:force_push` | No code changes |
 | `domain_allowlist` | `github.com, gitlab.com` | Repo platforms only |
-| `read_only` | Partial | Write to PR comments, not code |
+| `required` | `pr_id` | Every action tagged to a PR |
 
 ```json
 {
@@ -50,20 +52,20 @@ Six templates for AI agents in developer workflows. These are typically read-hea
 ```
 
 <Tip>
-  Add your internal GitLab or GitHub Enterprise domain to the `domain_allowlist` if you use a self-hosted instance.
+  Add your internal GitLab or GitHub Enterprise domain to `domain_allowlist` if you're self-hosted.
 </Tip>
 
 ---
 
 ## 2. CI/CD Agent
 
-**Use case:** An AI that monitors CI/CD pipelines, triggers test runs, reads build logs, and reports on failures — without the ability to modify pipeline configurations or deployment targets.
+**What it does:** Monitors pipelines, triggers test runs, reads build logs, and reports on failures — without the ability to deploy to production or modify pipeline configuration.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
 | `action_allowlist` | `ci:read, ci:trigger_test, ci:read_logs` | Trigger tests, not deploys |
 | `action_blocklist` | `ci:deploy_prod, ci:modify_config, ci:delete_pipeline` | Hard blocks |
-| `domain_allowlist` | CI/CD platforms | Scoped to known services |
+| `domain_allowlist` | CI/CD platforms only | Scoped to known services |
 
 ```json
 {
@@ -94,13 +96,12 @@ Six templates for AI agents in developer workflows. These are typically read-hea
 
 ## 3. Documentation Generator
 
-**Use case:** An AI that reads source code and generates or updates documentation — but cannot modify the code itself. Write access to docs directories only.
+**What it does:** Reads source code and generates or updates documentation — with write access to docs directories only, never to source code.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
 | `action_allowlist` | `files:read, docs:read, docs:write` | Code read, docs write |
 | `action_blocklist` | `code:write, files:delete, git:push_code` | No code changes |
-| `domain_allowlist` | Internal systems + docs platforms | Scoped access |
 
 ```json
 {
@@ -131,7 +132,7 @@ Six templates for AI agents in developer workflows. These are typically read-hea
 
 ## 4. Bug Triage Agent
 
-**Use case:** An AI that reads bug reports, adds labels, assigns priorities, and links related issues — without the ability to close issues, delete them, or mark them as "won't fix" without human review.
+**What it does:** Reads bug reports, adds labels, assigns priorities, and links related issues — without the ability to close, delete, or lock issues without human review.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
@@ -170,13 +171,13 @@ Six templates for AI agents in developer workflows. These are typically read-hea
 
 ## 5. Security Scanner
 
-**Use case:** An AI that performs read-only security analysis of a codebase — finding CVEs in dependencies, flagging hardcoded secrets, identifying insecure patterns — without making any automatic fixes.
+**What it does:** Performs read-only security analysis — finding CVEs in dependencies, flagging hardcoded secrets, identifying insecure patterns — without making any automatic fixes.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
 | `read_only` | `true` | Absolute — no auto-fixes |
 | `action_allowlist` | `files:read, deps:read, git:read` | Read-only analysis |
-| `no_pii_export` | `true` | No credential export |
+| `no_pii_export` | `true` | No credential export in output |
 | `domain_allowlist` | Security databases only | CVE lookups only |
 
 ```json
@@ -205,18 +206,18 @@ Six templates for AI agents in developer workflows. These are typically read-hea
 ```
 
 <Warning>
-  Even in read-only mode, a security scanner agent will access potentially sensitive code. Ensure the passport's permissions are scoped to specific repository paths, not the entire file system.
+  Even in read-only mode, a security scanner accesses sensitive code. Scope the passport's permissions to specific repository paths — not the entire file system.
 </Warning>
 
 ---
 
 ## 6. Dependency Auditor
 
-**Use case:** An AI that runs `npm audit` / `pip audit`, reads the output, and generates a report with severity and remediation steps — without updating any packages or modifying lock files.
+**What it does:** Runs audit commands, reads the output, and generates a report with severity and remediation steps — without updating any packages or modifying lock files.
 
 | Constraint | Value | Why |
 |-----------|-------|-----|
-| `read_only` | `true` | Audit only, no updates |
+| `read_only` | `true` | Audit only — no updates |
 | `action_allowlist` | `deps:audit, deps:read, files:read` | Audit commands + read |
 | `action_blocklist` | `deps:update, deps:install, deps:remove` | No package changes |
 
@@ -250,7 +251,6 @@ Six templates for AI agents in developer workflows. These are typically read-hea
 ## Applying Developer Templates
 
 ```bash
-# Code Review Agent
 curl -X POST https://uniplex.ai/api/gates \
   -H "Authorization: Bearer uni_xxxx" \
   -H "Content-Type: application/json" \
@@ -265,5 +265,5 @@ curl -X POST https://uniplex.ai/api/gates \
 ---
 
 <Card title="Browse All Templates" href="/templates/overview" icon="grid">
-  Back to the full template overview with all 30 profiles.
+  Back to the full template overview across all 5 categories.
 </Card>

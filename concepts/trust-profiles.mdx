@@ -1,69 +1,73 @@
 ---
 title: "Trust Profiles"
-description: "L1, L2, and L3 — choosing the right security level for your use case."
+description: "L1, L2, L3 — like security levels on a safe. Choose how much verification your gate requires."
 ---
 
 # Trust Profiles
 
-Every gate operates at one of three **trust profiles**: L1 (Baseline), L2 (Standard), or L3 (Strict). The profile determines how rigorously the gate verifies a passport — what it checks, what it skips, and how much it trusts the token it receives.
+Think of trust profiles like the security levels on a safe.
 
-Choose the profile that matches your risk tolerance. There's no penalty for starting at L1 during development and upgrading to L2 or L3 for production.
+An L1 safe has a combination lock — basic protection, fine for storing documents you'd prefer others didn't touch. An L2 safe adds a key requirement on top of the combination — meaningfully harder to compromise. An L3 safe adds a biometric reader, a live tamper alarm, and requires proving you're holding the key right now, not just that you know the code.
+
+Same idea here. Every gate operates at L1, L2, or L3. The profile determines how rigorously the gate verifies a passport — what it checks, what it skips, and how much it trusts the credential it receives.
+
+Start at L1 during development. Graduate to L2 for production. Reserve L3 for situations where the consequences of unauthorized access are severe.
 
 ---
 
-## Quick Comparison
+## At a Glance
 
 | Feature | L1 Baseline | L2 Standard | L3 Strict |
 |---------|------------|-------------|-----------|
-| Self-issued passports | ✅ Accepted | ❌ Requires managed issuer | ❌ Requires managed issuer |
+| Self-issued passports accepted | ✅ | ❌ Managed issuer required | ❌ Managed issuer required |
 | Signature verification | ✅ | ✅ | ✅ |
 | Issuer trust check | ❌ Any issuer | ✅ Trusted list only | ✅ Trusted list only |
 | Replay attack protection | ❌ | ✅ Nonce-based | ✅ Proof-of-possession |
 | Revocation check | ❌ | ✅ Cached (60s) | ✅ Live (every request) |
-| Network call required | ❌ Never | ❌ Usually not | ✅ Per-request (revocation) |
-| Typical latency | <0.1ms | <0.5ms | <2ms |
+| Network call required | ❌ Never | ❌ Usually not | ✅ Per-request for revocation |
+| Typical latency | < 0.1ms | < 0.5ms | < 2ms |
 
 ---
 
 ## L1 — Baseline
 
-L1 is the "just make it work" profile. It verifies that a passport is structurally valid and correctly self-signed, but doesn't check who signed it or whether it's been revoked.
+L1 is the "get it working" profile. It verifies that a passport is structurally valid and correctly self-signed, but it doesn't care who signed it or whether it's been revoked.
 
 **What L1 accepts:**
 - Self-issued passports (created with `Agent.create()` — no Supravisor account needed)
 - Passports from any issuer, trusted or not
-- Any non-expired, non-malformed passport
+- Any non-expired, well-formed passport
 
 **What L1 checks:**
-- ✅ Ed25519 signature is valid for the payload
-- ✅ Passport is not expired
+- ✅ Ed25519 signature is valid
+- ✅ Passport hasn't expired
 - ✅ Requested action is in the permission list
 - ✅ Guardrail constraints (spending, rate, domain, etc.)
 
 **What L1 skips:**
 - ❌ Issuer trust verification
 - ❌ Replay attack protection
-- ❌ Revocation list check
+- ❌ Revocation check
 
-**Best for:** Local development, unit tests, internal scripts, quick experiments, prototyping.
+**Best for:** Local development, unit tests, internal scripts, quick experiments.
 
 <Warning>
-  Never use L1 in production. Anyone who creates a self-issued passport can access your L1 gate. It offers guardrail enforcement but no identity assurance.
+  Never use L1 in production. Anyone who creates a self-issued passport can access your L1 gate. It enforces guardrails but has no identity assurance — you don't actually know who the agent is.
 </Warning>
 
-### L1 Code Examples
+### L1 Example
 
 <CodeGroup>
 ```python Python
 from uniplex import Agent, Gate, TrustProfile
 
-# Create a self-issued agent (no account needed)
+# Create a self-issued agent — no account, no issuer, no dashboard
 agent = Agent.create("dev-agent", permissions=["web:search", "mcp:read"])
 
-# Create an L1 gate (no trusted_issuers needed)
+# L1 gate — no trusted_issuers needed
 gate = Gate(profile=TrustProfile.L1)
 
-# Authorize — will pass for any valid self-issued passport
+# Works for any valid self-issued passport
 token = agent.export_token()
 decision = gate.authorize(token, "web:search")
 print(decision.allowed)  # True
@@ -72,15 +76,12 @@ print(decision.allowed)  # True
 ```typescript TypeScript
 import { Agent, Gate, TrustProfile } from 'uniplex';
 
-// Create a self-issued agent (no account needed)
 const agent = await Agent.create('dev-agent', {
   permissions: ['web:search', 'mcp:read'],
 });
 
-// Create an L1 gate
 const gate = new Gate({ profile: TrustProfile.L1 });
 
-// Authorize
 const token = agent.exportToken();
 const decision = await gate.authorize(token, 'web:search');
 console.log(decision.allowed); // true
@@ -91,7 +92,7 @@ console.log(decision.allowed); // true
 
 ## L2 — Standard
 
-L2 is the recommended profile for all production deployments. It adds issuer trust verification and nonce-based replay protection — meaning a captured token can't be replayed to gain unauthorized access.
+L2 is the default for everything going to production. It adds two critical layers that L1 skips: **issuer trust verification** (only passports from your approved issuers are accepted) and **nonce-based replay protection** (a captured token can't be replayed to gain unauthorized access).
 
 **What L2 accepts:**
 - Only passports signed by issuers in the gate's `trusted_issuers` list
@@ -101,23 +102,20 @@ L2 is the recommended profile for all production deployments. It adds issuer tru
 - ✅ Everything L1 checks
 - ✅ Issuer is in the trusted list
 - ✅ Nonce hasn't been seen before (replay protection)
-- ✅ Revocation status (checked against Supravisor's cached revocation list)
+- ✅ Revocation status (cached, checked every 60 seconds)
 
-**What L2 skips:**
-- ❌ Proof-of-possession (the agent doesn't need to sign the request)
+**Best for:** Production agents, team deployments, any service facing external networks, agents handling sensitive data.
 
-**Best for:** Production agents, team deployments, any service that faces external networks, agents handling sensitive data or performing actions with side effects.
-
-### L2 Code Examples
+### L2 Example
 
 <CodeGroup>
 ```python Python
 from uniplex import Agent, Gate, TrustProfile
 
-# Load an agent with a managed passport
+# Load from environment — uses a managed passport
 agent = Agent.from_env()  # reads UNIPLEX_PASSPORT_KEY
 
-# Create an L2 gate with trusted issuers
+# L2 gate — only accepts passports from your issuer
 gate = Gate(
     profile=TrustProfile.L2,
     trusted_issuers=["issuer:mycompany.ai"],
@@ -127,8 +125,8 @@ gate = Gate(
     }
 )
 
-# Authorize — verifies issuer + nonce + constraints
-token = agent.generate_token()  # includes a nonce
+# Token includes a nonce — can't be replayed
+token = agent.generate_token()
 decision = gate.authorize(token, "web:search")
 
 if decision.allowed:
@@ -140,10 +138,8 @@ else:
 ```typescript TypeScript
 import { Agent, Gate, TrustProfile } from 'uniplex';
 
-// Load an agent with a managed passport
 const agent = await Agent.fromEnv();
 
-// Create an L2 gate
 const gate = new Gate({
   profile: TrustProfile.L2,
   trustedIssuers: ['issuer:mycompany.ai'],
@@ -153,7 +149,6 @@ const gate = new Gate({
   },
 });
 
-// Authorize
 const token = agent.generateToken(); // includes a nonce
 const decision = await gate.authorize(token, 'web:search');
 
@@ -169,53 +164,45 @@ if (decision.allowed) {
 
 ## L3 — Strict
 
-L3 is the highest security level. It requires **proof-of-possession**: the agent must cryptographically sign each request with its private key, proving it physically holds the key — not just a copy of the token. Combined with live revocation checks, L3 makes token theft essentially useless.
+L3 is the highest security level. It requires **proof-of-possession**: the agent must cryptographically sign each request with its private key, proving it physically holds the key — not just a copy of the token. Combined with live revocation checks on every single request, L3 makes token theft essentially useless.
 
-**What L3 accepts:**
-- Passports signed by trusted issuers
-- Requests where the agent has signed the request payload with its private key
-- Only non-revoked passports (checked live against Supravisor's revocation list)
-
-**What L3 checks:**
+**What L3 adds:**
 - ✅ Everything L2 checks
 - ✅ Proof-of-possession: agent signs `{passport_id}:{nonce}:{timestamp}` with its private key
 - ✅ Live revocation check (not cached — every single request)
-- ✅ Timestamp is within 30 seconds to prevent delayed replay
+- ✅ Timestamp is within 30 seconds — prevents delayed replay
 
-**Best for:** Financial agents, healthcare automation, payroll, crypto trading, anything where the consequences of unauthorized access are severe.
+**Best for:** Financial agents, healthcare automation, payroll, crypto trading, any situation where unauthorized access has severe consequences.
 
 <Note>
   L3 requires a network call for the live revocation check. This typically adds 10–50ms depending on latency to Supravisor's revocation service.
 </Note>
 
-### L3 Code Examples
+### L3 Example
 
 <CodeGroup>
 ```python Python
 from uniplex import Agent, Gate, TrustProfile
 
-# L3 requires the full keypair (not just passport_id)
-agent = Agent.from_env()  # reads UNIPLEX_PASSPORT_KEY
+agent = Agent.from_env()  # needs the full keypair
 
-# Create an L3 gate
 gate = Gate(
     profile=TrustProfile.L3,
     trusted_issuers=["issuer:fintech.mycompany.ai"],
     constraints={
         "max_per_action": "$100.00",
         "max_per_day": "$500.00",
-        "approval_threshold": "$50.00",
+        "approval_threshold": "$50.00",  # Human approval above $50
         "no_pii_export": True,
         "action_blocklist": "payments:refund,payments:void"
     }
 )
 
-# Agent signs the request — proof-of-possession
+# Agent signs the request — proves it physically holds the key
 token = agent.generate_signed_token(nonce="unique-request-nonce")
 decision = gate.authorize(token, "payments:send", resource="stripe:charge")
 
 if not decision.allowed:
-    # Log the denial with attestation for audit
     logger.warning(f"Payment denied: {decision.reason} (att: {decision.attestation_id})")
 ```
 
@@ -266,7 +253,7 @@ Is this agent externally facing or part of a team deployment?
   └── Internal-only → L2 (still recommended)
 ```
 
-When in doubt, use L2. It adds minimal overhead and provides meaningful protection against the most common attack vectors (token theft, replay attacks, rogue agents).
+When in doubt, use L2. The overhead is minimal — under 0.5ms — and it provides real protection against the most common attack vectors: token theft, replay attacks, and rogue agents using self-signed credentials.
 
 ---
 

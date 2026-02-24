@@ -1,11 +1,11 @@
 ---
 title: "Guardrails API"
-description: "Configure and manage constraint policies."
+description: "Create reusable constraint configurations and apply them across multiple gates. Define once, enforce everywhere."
 ---
 
 # Guardrails API
 
-Guardrails are the constraint policies embedded in gates. While most constraint management happens through the [Gates API](/api-reference/gates), the Guardrails API lets you create reusable constraint configurations and apply them across multiple gates.
+Guardrails are the constraint policies that evaluate every gate request. Most constraint management happens directly through the Gates API. The Guardrails API lets you create named, reusable constraint configurations — define once, apply to many gates.
 
 **Base URL:** `https://uniplex.ai/api`
 
@@ -13,15 +13,11 @@ Guardrails are the constraint policies embedded in gates. While most constraint 
 
 ## List Guardrail Configurations
 
-Retrieve saved guardrail configurations for the authenticated account.
-
 ```
 GET /api/guardrails
 ```
 
 **Required scope:** `guardrails:read`
-
-**Example Request:**
 
 ```bash
 curl https://uniplex.ai/api/guardrails \
@@ -72,7 +68,7 @@ POST /api/guardrails
 | `description` | string | ❌ | Optional description |
 | `constraints` | object | ✅ | The constraint configuration |
 
-**Constraints Object Fields:**
+**Constraint Fields:**
 
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
@@ -80,19 +76,19 @@ POST /api/guardrails
 | `max_per_minute` | integer | Max actions per minute | `10` |
 | `max_per_hour` | integer | Max actions per hour | `100` |
 | `max_per_day` | string | Max spend per day | `"$50.00"` |
-| `max_cumulative` | string | Lifetime cumulative spend cap | `"$500.00"` |
+| `max_cumulative` | string | Rolling spend cap | `"$500.00"` |
 | `cumulative_window` | string | Rolling window for cumulative | `"30d"` |
-| `approval_threshold` | string | Human approval above this | `"$25.00"` |
+| `approval_threshold` | string | Human approval required above this | `"$25.00"` |
 | `domain_allowlist` | string | Comma-separated allowed domains | `"openai.com,anthropic.com"` |
 | `domain_blocklist` | string | Comma-separated blocked domains | `"facebook.com,twitter.com"` |
 | `action_allowlist` | string[] | Permitted actions only | `["web:search", "mcp:read"]` |
-| `action_blocklist` | string[] | Always deny these | `["files:delete", "payments:send"]` |
+| `action_blocklist` | string[] | Always deny these actions | `["files:delete", "payments:send"]` |
 | `read_only` | boolean | Block all write operations | `true` |
-| `no_pii_export` | boolean | Detect and block PII export | `true` |
+| `no_pii_export` | boolean | Detect and block PII in responses | `true` |
 | `required` | string | Required request metadata field | `"user_id"` |
 | `model` | string | Required AI model | `"claude-3-5-sonnet"` |
-| `response_time_ms` | integer | SLA latency requirement (ms) | `2000` |
-| `uptime_basis_points` | integer | SLA uptime (e.g., 9900 = 99%) | `9900` |
+| `response_time_ms` | integer | SLA latency target (ms) | `2000` |
+| `uptime_basis_points` | integer | SLA uptime (9900 = 99%) | `9900` |
 
 **Example Request:**
 
@@ -107,7 +103,7 @@ curl -X POST https://uniplex.ai/api/guardrails \
       "max_per_day": "$50.00",
       "max_per_minute": 10,
       "max_per_hour": 200,
-      "domain_allowlist": "google.com,arxiv.org,wikipedia.org,pubmed.ncbi.nlm.nih.gov",
+      "domain_allowlist": "google.com,arxiv.org,wikipedia.org",
       "read_only": true,
       "no_pii_export": true,
       "action_allowlist": ["web:search", "web:read", "web:fetch"]
@@ -126,7 +122,7 @@ curl -X POST https://uniplex.ai/api/guardrails \
     "max_per_day": "$50.00",
     "max_per_minute": 10,
     "max_per_hour": 200,
-    "domain_allowlist": "google.com,arxiv.org,wikipedia.org,pubmed.ncbi.nlm.nih.gov",
+    "domain_allowlist": "google.com,arxiv.org,wikipedia.org",
     "read_only": true,
     "no_pii_export": true,
     "action_allowlist": ["web:search", "web:read", "web:fetch"]
@@ -154,13 +150,13 @@ curl https://uniplex.ai/api/guardrails/gr_def789 \
 
 ## Update Guardrail Configuration
 
+Update a constraint configuration. Changes propagate to all gates that use this guardrail.
+
 ```
 PUT /api/guardrails/:guardrail_id
 ```
 
 **Required scope:** `guardrails:update`
-
-Updates the constraint configuration. Changes propagate to all gates that use this guardrail configuration.
 
 ```bash
 curl -X PUT https://uniplex.ai/api/guardrails/gr_def789 \
@@ -176,9 +172,9 @@ curl -X PUT https://uniplex.ai/api/guardrails/gr_def789 \
 
 ---
 
-## Apply Guardrail to Gate
+## Apply Guardrail to Gates
 
-Apply a saved guardrail configuration to one or more gates.
+Apply a saved guardrail configuration to one or more gates at once.
 
 ```
 POST /api/guardrails/:guardrail_id/apply
@@ -209,7 +205,7 @@ curl -X POST https://uniplex.ai/api/guardrails/gr_def789/apply \
 
 ## Validate a Constraint Config
 
-Check whether a constraint configuration is valid before applying it to a gate.
+Check whether a constraint configuration is valid before applying it to a gate. Catches formatting errors and contradictions before they cause problems.
 
 ```
 POST /api/guardrails/validate
@@ -241,9 +237,18 @@ curl -X POST https://uniplex.ai/api/guardrails/validate \
     },
     {
       "field": "uptime_basis_points",
-      "message": "Must be between 0 and 10000 (100.00%)"
+      "message": "Must be between 0 and 10000 (representing 0–100.00%)"
     }
   ]
+}
+```
+
+**Response (valid):**
+
+```json
+{
+  "valid": true,
+  "warnings": []
 }
 ```
 
@@ -255,4 +260,17 @@ curl -X POST https://uniplex.ai/api/guardrails/validate \
 |-----------|------------|-------------|
 | `GUARDRAIL_NOT_FOUND` | 404 | No guardrail with this ID |
 | `INVALID_CONSTRAINT_VALUE` | 422 | A constraint value has invalid format |
-| `CONFLICTING_CONSTRAINTS` | 422 | Constraint combination is contradictory (e.g., action in both allowlist and blocklist) |
+| `CONFLICTING_CONSTRAINTS` | 422 | Contradiction (e.g., same action in allowlist and blocklist) |
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Guardrails Concept" href="/concepts/guardrails" icon="sliders">
+    All 26 constraint types with examples.
+  </Card>
+  <Card title="Custom Constraints Guide" href="/guides/custom-constraints" icon="wrench">
+    Practical patterns for building constraint configurations.
+  </Card>
+</CardGroup>

@@ -1,13 +1,23 @@
 ---
 title: "MCP Server Integration"
-description: "21 tools for managing Supravisor from any MCP-compatible AI client."
+description: "21 tools for managing Supravisor from Claude or any MCP-compatible AI client. Say what you want — Claude handles the API calls."
 ---
 
 # MCP Server Integration
 
-The Supravisor MCP server exposes 21 tools that let any MCP-compatible AI client — Claude, Claude Code, or any other MCP-enabled agent — manage your entire Supravisor setup through natural language.
+MCP (Model Context Protocol) is how AI clients like Claude communicate with external tools. The Supravisor MCP server exposes 21 tools that let any MCP-compatible client manage your entire Supravisor setup through natural language.
 
-Instead of navigating the dashboard or writing API calls, you can say "issue a passport for my research agent" and Claude will handle it.
+Instead of navigating the dashboard or writing API calls, you say:
+
+> "Issue a passport for my research agent with web:search permissions, expiring in 90 days."
+
+Claude handles the rest.
+
+---
+
+## Why This Matters
+
+Most agent infrastructure is managed by developers writing API calls. MCP flips that: the AI manages its own infrastructure, with humans approving and reviewing rather than implementing. This is what autonomous agent management looks like in practice.
 
 ---
 
@@ -19,17 +29,17 @@ npx uniplex-mcp-manage
 
 This command:
 1. Starts the Supravisor MCP server
-2. Opens your browser for OAuth 2.0 PKCE authorization (one time)
-3. Stores the access token locally
+2. Opens your browser for OAuth 2.0 PKCE authorization (one-time)
+3. Stores the access token locally at `~/.uniplex/mcp-token.json`
 4. Listens for MCP connections on `localhost:3456`
 
-**Transport:** Streamable HTTP (compatible with all MCP clients)
+**Transport:** Streamable HTTP — compatible with all MCP clients.
 
 ---
 
-## Authentication: OAuth 2.0 with PKCE
+## Authentication
 
-On first run, the MCP server opens a browser window:
+On first run, the server opens a browser:
 
 ```
 Opening browser for Supravisor authorization...
@@ -39,14 +49,14 @@ Waiting for authorization... (press Ctrl+C to cancel)
 ```
 
 1. Log in with your Supravisor account
-2. Authorize the MCP server access
-3. The browser redirects back and the terminal shows `✓ Authorized`
+2. Authorize MCP access
+3. The browser redirects, terminal shows `✓ Authorized`
 
-The access token is stored in `~/.uniplex/mcp-token.json`. Subsequent runs use the cached token automatically. Tokens are valid for 30 days and auto-refresh.
+Tokens are valid for 30 days and auto-refresh. Subsequent runs use the cached token automatically.
 
 ---
 
-## Adding to Claude's MCP Config
+## Adding to Claude
 
 ### Claude Desktop
 
@@ -68,8 +78,6 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ### Claude Code
 
-Add to your project's `.mcp.json` or run:
-
 ```bash
 claude mcp add supravisor npx uniplex-mcp-manage
 ```
@@ -80,16 +88,16 @@ claude mcp add supravisor npx uniplex-mcp-manage
 
 ### Issuer Management
 
-| Tool | Description |
+| Tool | What it does |
 |------|-------------|
 | `create_issuer` | Create a new signing authority with a generated keypair |
-| `list_issuers` | List all issuers with their trust tier and status |
+| `list_issuers` | List all issuers with trust tier and status |
 | `get_issuer` | Get full details of a specific issuer |
 | `update_issuer` | Update issuer name or description |
-| `revoke_issuer` | Revoke an issuer and all its passports |
+| `revoke_issuer` | Revoke an issuer and instantly invalidate all its passports |
 
-**Example:** `create_issuer`
 ```json
+// Example: create_issuer
 {
   "name": "Production Agents",
   "issuer_id": "issuer:acmecorp.ai",
@@ -101,15 +109,15 @@ claude mcp add supravisor npx uniplex-mcp-manage
 
 ### Passport Management
 
-| Tool | Description |
+| Tool | What it does |
 |------|-------------|
 | `issue_passport` | Issue a new passport for an agent |
 | `list_passports` | List passports with optional filters |
 | `get_passport` | Get passport details (public data only) |
 | `revoke_passport` | Revoke a passport immediately |
 
-**Example:** `issue_passport`
 ```json
+// Example: issue_passport
 {
   "agent_id": "research-bot",
   "agent_name": "Research Bot",
@@ -123,7 +131,7 @@ claude mcp add supravisor npx uniplex-mcp-manage
 
 ### Gate Management
 
-| Tool | Description |
+| Tool | What it does |
 |------|-------------|
 | `create_gate` | Create a new enforcement gate |
 | `list_gates` | List all gates with their configurations |
@@ -131,8 +139,8 @@ claude mcp add supravisor npx uniplex-mcp-manage
 | `update_gate` | Update gate configuration or constraints |
 | `delete_gate` | Delete a gate |
 
-**Example:** `create_gate`
 ```json
+// Example: create_gate
 {
   "name": "Research Gate",
   "profile": "L2",
@@ -145,13 +153,13 @@ claude mcp add supravisor npx uniplex-mcp-manage
 
 ### Authorization
 
-| Tool | Description |
+| Tool | What it does |
 |------|-------------|
 | `check_authorization` | Check if a passport token is authorized for an action |
 | `verify_passport` | Verify a passport's signature and validity |
 
-**Example:** `check_authorization`
 ```json
+// Example: check_authorization
 {
   "passport_token": "base64_token...",
   "action": "web:search",
@@ -163,14 +171,14 @@ claude mcp add supravisor npx uniplex-mcp-manage
 
 ### Attestations
 
-| Tool | Description |
+| Tool | What it does |
 |------|-------------|
 | `list_attestations` | List attestations with filters |
 | `get_attestation` | Get a single attestation with full details |
 | `export_attestations` | Export attestations as JSON or CSV |
 
-**Example:** `list_attestations`
 ```json
+// Example: list_attestations
 {
   "agent_id": "research-bot",
   "decision": "deny",
@@ -183,13 +191,13 @@ claude mcp add supravisor npx uniplex-mcp-manage
 
 ### Templates
 
-| Tool | Description |
+| Tool | What it does |
 |------|-------------|
 | `list_templates` | List all available constraint templates |
 | `apply_template` | Apply a template to a gate |
 
-**Example:** `apply_template`
 ```json
+// Example: apply_template
 {
   "gate_id": "gate_def456",
   "template": "read-only-researcher"
@@ -198,39 +206,39 @@ claude mcp add supravisor npx uniplex-mcp-manage
 
 ---
 
-## Natural Language Prompts
+## Natural Language Prompts That Work
 
-The MCP server is designed to be used conversationally. Here are example prompts that work well:
+The MCP server is designed for conversation. Here's what works well:
 
 ### Issuer and Passport Management
 
 > "Issue a passport for my research agent with web:search and mcp:read permissions, expiring in 90 days. Use issuer:acmecorp.ai."
 
-Claude will call `issue_passport` and display the passport ID and private key (shown once).
+Claude calls `issue_passport` and shows you the passport ID and private key (shown once — save it immediately).
 
 > "Show me all active passports that expire in the next 30 days."
 
-Claude will call `list_passports` with expiry filters.
+Claude calls `list_passports` with expiry filters.
 
 > "Revoke the passport for the agent named 'old-bot'."
 
-Claude will find the passport by agent name and call `revoke_passport`.
+Claude finds it and calls `revoke_passport`.
 
 ---
 
-### Gate Inspection
+### Gate Inspection and Updates
 
 > "What gates do I have and which issuers do they trust?"
 
-Claude will call `list_gates` and format a readable summary.
-
-> "Show me the full configuration for my Research Gate."
-
-Claude will call `get_gate` and display constraints, trusted issuers, and profile.
+Claude calls `list_gates` and formats a clean summary.
 
 > "Update the Research Gate to block twitter.com and facebook.com."
 
-Claude will call `update_gate` with the updated domain blocklist.
+Claude calls `update_gate` with the updated domain blocklist.
+
+> "Show me the full config for my Research Gate."
+
+Claude calls `get_gate` and displays constraints, trusted issuers, and security profile.
 
 ---
 
@@ -238,40 +246,28 @@ Claude will call `update_gate` with the updated domain blocklist.
 
 > "Show me the last 10 authorization decisions for my research agent."
 
-Claude will call `list_attestations` with `agent_id` and `limit=10`.
+Claude calls `list_attestations` with `agent_id` and `limit=10`.
 
 > "Why was the research agent blocked 3 hours ago?"
 
-Claude will find the denial attestation and explain the reason from `constraints_evaluated`.
+Claude finds the denial attestation and explains the reason from `constraints_evaluated`.
 
 > "Export all denials from last week as CSV."
 
-Claude will call `export_attestations` with decision and date filters.
-
----
-
-### Template Application
-
-> "Apply the Read-Only Researcher template to my research gate."
-
-Claude will call `apply_template` with the template name.
-
-> "What templates are available for financial agents?"
-
-Claude will call `list_templates` and filter for finance category.
+Claude calls `export_attestations` with decision and date filters.
 
 ---
 
 ## Example: Full Setup via MCP
 
-Here's a full setup conversation with Claude using the MCP server:
+Here's what a complete setup conversation looks like:
 
 ```
-You: "I need to set up Supravisor for my new research agent. 
-      It should only be able to search the web and read pages, 
-      with a $20/day limit and no social media access."
+You: "I need to set up Supravisor for my new research agent.
+      Web search and page reading only. $20/day limit.
+      Block social media."
 
-Claude: I'll set this up for you. Let me:
+Claude: I'll set this up. Let me:
 1. Create an issuer for your agents
 2. Issue a passport for the research agent
 3. Create a gate with your requirements
@@ -282,11 +278,16 @@ Done! Here's what I created:
 - Issuer: issuer:yourname.ai
 - Passport ID: uni_abc123
 - Gate ID: gate_xyz789
-- Constraints: web:search + web:read only, $20/day, social media blocked
+- Constraints: web:search + web:read only, $20/day,
+  social media blocked
 
-⚠️ Save this private key now (shown once): ed25519_abc...
+⚠️ Save this private key now (shown once):
+ed25519_abc...
+
 Set UNIPLEX_PASSPORT_KEY=ed25519_abc... in your agent's environment.
 ```
+
+One conversation. Full trust infrastructure. No dashboard navigation required.
 
 ---
 
@@ -294,9 +295,9 @@ Set UNIPLEX_PASSPORT_KEY=ed25519_abc... in your agent's environment.
 
 <CardGroup cols={2}>
   <Card title="Protect Claude" href="/guides/protect-claude" icon="robot">
-    Step-by-step integration with Claude and Claude Code.
+    Step-by-step integration with Claude Desktop and Claude Code.
   </Card>
   <Card title="Agent Autonomy" href="/guides/agent-autonomy" icon="cpu">
-    Let agents manage their own credentials autonomously.
+    Let agents manage their own credentials through MCP.
   </Card>
 </CardGroup>

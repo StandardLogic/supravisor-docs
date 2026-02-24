@@ -1,11 +1,11 @@
 ---
 title: "Gates API"
-description: "Create and manage authorization enforcement points."
+description: "Create, configure, and manage enforcement checkpoints. Gates verify agent passports and evaluate guardrails on every request."
 ---
 
 # Gates API
 
-Gates are the enforcement checkpoints that verify agent passports and evaluate guardrail constraints. This API covers CRUD operations for gates.
+Gates are your enforcement checkpoints. Every time an agent presents a passport, the gate verifies the signature, checks the issuer, evaluates every constraint, and signs a decision record. This API covers everything you need to create and manage them.
 
 **Base URL:** `https://uniplex.ai/api`
 
@@ -74,9 +74,9 @@ POST /api/gates
 | `name` | string | ✅ | Human-readable gate name |
 | `profile` | string | ✅ | `L1`, `L2`, or `L3` |
 | `trusted_issuers` | string[] | ❌ | Issuer IDs to accept (required for L2/L3) |
-| `constraints` | object | ❌ | Guardrail constraints |
+| `constraints` | object | ❌ | Guardrail constraints object |
 | `template` | string | ❌ | Apply a constraint template by name |
-| `required_permissions` | string[] | ❌ | Passport must include these permissions |
+| `required_permissions` | string[] | ❌ | All passports must include these permissions |
 
 **Example Request:**
 
@@ -118,6 +118,10 @@ curl -X POST https://uniplex.ai/api/gates \
 }
 ```
 
+<Note>
+  Save the `public_key` from the response — you'll need it to independently verify attestation signatures without trusting Supravisor's API. See [Attestations → Verifying Signatures Offline](/concepts/attestations).
+</Note>
+
 ---
 
 ## Get Gate
@@ -127,8 +131,6 @@ GET /api/gates/:gate_id
 ```
 
 **Required scope:** `gates:read`
-
-**Example Request:**
 
 ```bash
 curl https://uniplex.ai/api/gates/gate_def456 \
@@ -172,12 +174,11 @@ PUT /api/gates/:gate_id
 
 **Required scope:** `gates:update`
 
-**Request Body:** Same fields as create. Provide only fields you want to change.
+Provide only the fields you want to change. Unspecified fields are not modified.
 
-**Example Request:**
+**Example — add a domain blocklist and increase the spending cap:**
 
 ```bash
-# Add a domain to the blocklist
 curl -X PUT https://uniplex.ai/api/gates/gate_def456 \
   -H "Authorization: Bearer uni_xxxx" \
   -H "Content-Type: application/json" \
@@ -195,15 +196,13 @@ curl -X PUT https://uniplex.ai/api/gates/gate_def456 \
 
 ## Delete Gate
 
-Delete a gate. Deleting a gate does not affect passports — it only removes the enforcement point.
+Delete a gate. Deleting a gate removes the enforcement point — it does not affect passports or issuers.
 
 ```
 DELETE /api/gates/:gate_id
 ```
 
 **Required scope:** `gates:delete`
-
-**Example Request:**
 
 ```bash
 curl -X DELETE https://uniplex.ai/api/gates/gate_def456 \
@@ -242,8 +241,6 @@ GET /api/gates/:gate_id/public-key
 }
 ```
 
-Use this public key to independently verify that attestations haven't been tampered with. See [Attestations → Verifying a Signature Offline](/concepts/attestations#verifying-a-signature-offline).
-
 ---
 
 ## Error Responses
@@ -255,3 +252,16 @@ Use this public key to independently verify that attestations haven't been tampe
 | `INVALID_PROFILE` | 422 | Profile must be L1, L2, or L3 |
 | `INVALID_ISSUER` | 422 | One or more issuer IDs are invalid |
 | `INVALID_CONSTRAINT` | 422 | Constraint value format is invalid |
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Guardrails API" href="/api-reference/guardrails" icon="sliders">
+    Create reusable constraint configurations.
+  </Card>
+  <Card title="Passports API" href="/api-reference/passports" icon="id-card">
+    Issue the credentials your gate will evaluate.
+  </Card>
+</CardGroup>

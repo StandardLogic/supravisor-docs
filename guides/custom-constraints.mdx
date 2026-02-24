@@ -1,13 +1,13 @@
 ---
 title: "Custom Constraints"
-description: "Build exactly the guardrails your agent needs."
+description: "You decide the rules. Build exactly the guardrail configuration your agent needs."
 ---
 
 # Custom Constraints
 
-Templates are the fastest path to a configured gate. But when you need something specific — a precise combination of spending limits, allowed domains, and rate caps that matches your exact use case — you build it yourself.
+Templates give you a fast start. But when you know exactly what your agent needs — a precise combination of spending limits, allowed domains, rate caps, and approval thresholds — you build it yourself.
 
-This guide covers common constraint patterns and how to combine them.
+This guide covers the most common constraint patterns and how to combine them.
 
 ---
 
@@ -15,7 +15,7 @@ This guide covers common constraint patterns and how to combine them.
 
 <CardGroup cols={2}>
   <Card title="Start with a template" icon="grid">
-    Apply a template to your gate, then override individual values. This is faster and reduces the chance of missing an important constraint.
+    Apply a template to your gate, then override individual values. Faster than building from scratch, and harder to misconfigure.
     
     ```python
     gate = Gate.from_template("web-research-agent")
@@ -23,13 +23,13 @@ This guide covers common constraint patterns and how to combine them.
     ```
   </Card>
   <Card title="Build from scratch" icon="wrench">
-    Start with an empty constraint set if your requirements are unique. Only add what you explicitly need.
+    Start with an empty constraint set if your requirements are unique. Only configure what you explicitly need.
     
     ```python
     gate = Gate(
         profile=TrustProfile.L2,
         trusted_issuers=["issuer:me.ai"],
-        constraints={}  # Empty — add what you need
+        constraints={}  # Start empty, add what you need
     )
     ```
   </Card>
@@ -37,7 +37,7 @@ This guide covers common constraint patterns and how to combine them.
 
 ---
 
-## The Constraint Config JSON Format
+## The Constraint Config Format
 
 All constraints live in the `constraints` object when creating or updating a gate:
 
@@ -72,12 +72,12 @@ All constraints live in the `constraints` object when creating or updating a gat
 
 ## Common Patterns
 
-### Allow Web Search but Block Social Media
+### Web Search with Social Media Blocked
 
 ```json
 {
   "constraints": {
-    "domain_blocklist": "facebook.com,twitter.com,instagram.com,tiktok.com,reddit.com,linkedin.com",
+    "domain_blocklist": "facebook.com,twitter.com,instagram.com,tiktok.com,reddit.com",
     "action_allowlist": ["web:search", "web:read", "web:fetch"],
     "max_per_hour": 50,
     "read_only": true
@@ -85,7 +85,7 @@ All constraints live in the `constraints` object when creating or updating a gat
 }
 ```
 
-For maximum security, use an allowlist instead of a blocklist:
+For maximum security, use an **allowlist** instead:
 
 ```json
 {
@@ -96,6 +96,8 @@ For maximum security, use an allowlist instead of a blocklist:
   }
 }
 ```
+
+Allowlisting is stricter. Anything not explicitly listed is blocked.
 
 ---
 
@@ -111,25 +113,25 @@ For maximum security, use an allowlist instead of a blocklist:
 }
 ```
 
-With this config:
-- Actions costing under $5 → automatically allowed (if other constraints pass)
+How this plays out:
+- Actions costing under $5 → auto-allowed (if other constraints pass)
 - Actions costing $5–$10 → paused for human approval
 - Actions costing over $10 → immediately denied
 
 ---
 
-### Read Files but Never Delete
+### Read Files, Never Delete or Move Them
 
 ```json
 {
   "constraints": {
     "action_allowlist": ["files:read", "files:list"],
-    "action_blocklist": ["files:delete", "files:move", "files:rename"]
+    "action_blocklist": ["files:delete", "files:move", "files:rename", "files:write"]
   }
 }
 ```
 
-Or use the simpler `read_only` constraint which blocks all write operations across all namespaces:
+Or use `read_only` for a simpler block on all write operations across every namespace:
 
 ```json
 {
@@ -141,7 +143,7 @@ Or use the simpler `read_only` constraint which blocks all write operations acro
 
 ---
 
-### Only Specific Domains (Strict Allowlist)
+### Strict Domain Allowlist
 
 ```json
 {
@@ -151,7 +153,7 @@ Or use the simpler `read_only` constraint which blocks all write operations acro
 }
 ```
 
-Any domain not in this list is automatically denied, including subdomains. To allow subdomains, list them explicitly:
+Any domain not in this list is denied — including subdomains. To allow subdomains, list them explicitly:
 
 ```json
 {
@@ -165,7 +167,7 @@ Any domain not in this list is automatically denied, including subdomains. To al
 
 ### Rate-Limited API Caller
 
-For agents that call external APIs and need to stay within rate limits:
+For agents that call external APIs and need to stay within their rate limits:
 
 ```json
 {
@@ -201,9 +203,9 @@ For agents that call external APIs and need to stay within rate limits:
 
 ---
 
-## Testing Constraints
+## Testing Constraints Before Shipping
 
-Before deploying, use the built-in Test tool in the Supravisor dashboard:
+Before your agent touches anything real, test your constraint config:
 
 <Steps>
   <Step title="Open your gate">
@@ -213,20 +215,20 @@ Before deploying, use the built-in Test tool in the Supravisor dashboard:
     You'll see the constraint test interface.
   </Step>
   <Step title="Paste a passport token">
-    Use the passport token from your agent's environment.
+    Use the token from your agent's environment.
   </Step>
-  <Step title="Enter the action to test">
-    Type an action like `web:search` or `payments:send`.
+  <Step title="Enter an action">
+    Try something expected to be allowed, then something that should be blocked.
   </Step>
-  <Step title="Add optional context">
-    For spending constraints: add a `cost` field. For domain constraints: add a `resource` field.
+  <Step title="Add context for spending/domain constraints">
+    For spending: add a `cost` field to metadata. For domain constraints: add a `resource` field.
   </Step>
   <Step title="Click Check">
-    See the full evaluation result: which constraints passed, which failed, and the exact reason for the decision.
+    See the full evaluation: which constraints passed, which failed, and the exact reason for the decision.
   </Step>
 </Steps>
 
-You can also test via the API:
+Via API:
 
 ```bash
 curl -X POST https://uniplex.ai/api/authorize \
@@ -246,9 +248,9 @@ curl -X POST https://uniplex.ai/api/authorize \
 
 ---
 
-## Combining Multiple Constraint Types
+## Stacking Multiple Constraints
 
-Constraints are AND-evaluated: ALL must pass for the action to be allowed. You can stack as many as you need:
+Constraints are AND-evaluated — every single one must pass. Stack as many as you need:
 
 ```json
 {
@@ -265,17 +267,17 @@ Constraints are AND-evaluated: ALL must pass for the action to be allowed. You c
 
 This gate allows:
 - Any action (not read-only)
-- To `api.openai.com` only
-- Up to 10 times per minute
-- Up to $25/day
-- Only if `session_id` is present in the request
-- But never if the response would export PII
+- Only to `api.openai.com`
+- At most 10 times per minute
+- Up to $25/day total
+- Only if `session_id` is in the request metadata
+- But never if the response would contain PII
 
 ---
 
 ## Per-Issuer Overrides
 
-When you have multiple issuers with different trust levels, you can configure a gate to apply different constraints based on which issuer signed the passport:
+Different issuers can have different limits on the same gate:
 
 ```python
 from uniplex import Gate, TrustProfile
@@ -284,11 +286,11 @@ gate = Gate(
     profile=TrustProfile.L2,
     issuer_constraints={
         "issuer:acmecorp.ai": {
-            "max_per_day": "$500.00",    # Production issuer: higher limits
+            "max_per_day": "$500.00",  # Production: higher limits
             "max_per_minute": 50
         },
         "issuer:dev.acmecorp.ai": {
-            "max_per_day": "$10.00",     # Dev issuer: conservative limits
+            "max_per_day": "$10.00",   # Dev: conservative limits
             "max_per_minute": 5
         }
     }
@@ -297,9 +299,9 @@ gate = Gate(
 
 ---
 
-## Debugging: Reading Why a Decision Was Denied
+## Debugging a Denial
 
-When an action is denied, the attestation always includes the specific constraint that triggered the denial and the current values:
+When something gets blocked, the denial attestation tells you exactly why:
 
 ```python
 decision = gate.authorize(token, "payments:send")
@@ -310,23 +312,20 @@ if not decision.allowed:
     
     for constraint in decision.constraints_evaluated:
         if constraint["result"] == "fail":
-            print(f"Failed constraint: {constraint['type']}")
+            print(f"Failed: {constraint['type']}")
             print(f"  Limit: {constraint['value']}")
             print(f"  Current: {constraint['current']}")
             print(f"  Detail: {constraint['detail']}")
 ```
 
-Or from the dashboard:
-1. Click **Activity**
-2. Find the red (denied) row
-3. Click to expand — see the full `constraints_evaluated` array
+Or check the dashboard: **Activity** → click the red row → expand `constraints_evaluated`.
 
 ---
 
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="All 17 Constraints" href="/concepts/guardrails" icon="sliders">
+  <Card title="All 26 Constraints" href="/concepts/guardrails" icon="sliders">
     Full reference for every constraint type.
   </Card>
   <Card title="Browse Templates" href="/templates/overview" icon="grid">
